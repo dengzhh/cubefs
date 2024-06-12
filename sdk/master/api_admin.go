@@ -402,12 +402,62 @@ func (api *AdminAPI) CreateVolName(volName, owner string, capacity uint64, delet
 	return
 }
 
+func (api *AdminAPI) CreateJuicefsVolName(volName, owner string, setting string) (err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminCreateVol)
+	request.addParam("name", volName)
+	request.addParam("owner", owner)
+	request.addParam("capacity", "0")
+	request.addParam("deleteLockTime", "0")
+	request.addParam("crossZone", "false")
+	request.addParam("normalZonesFirst", "false")
+	request.addParam("description", setting)
+	request.addParam("mpCount", "3")
+	request.addParam("dpCount", "0")
+	request.addParam("replicaNum", "3")
+	request.addParam("size", "120")
+	request.addParam("volType", "0")
+	request.addParam("followerRead", "true")
+	request.addParam("zoneName", "")
+	request.addParam("cacheRuleKey", "")
+	request.addParam("ebsBlkSize", strconv.Itoa(8*1024*1024))
+	request.addParam("cacheCap", strconv.Itoa(0))
+	request.addParam("cacheAction", strconv.Itoa(0))
+	request.addParam("cacheThreshold", strconv.Itoa(10*1024*1024))
+	request.addParam("cacheTTL", strconv.Itoa(30))
+	request.addParam("cacheHighWater", strconv.Itoa(80))
+	request.addParam("cacheLowWater", strconv.Itoa(60))
+	request.addParam("cacheLRUInterval", strconv.Itoa(5))
+	request.addParam("dpReadOnlyWhenVolFull", strconv.FormatBool(false))
+	request.addParam("enableQuota", "false")
+
+	request.addParam("txTimeout", strconv.FormatUint(uint64(1), 10))
+
+	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
 func (api *AdminAPI) CreateDefaultVolume(volName, owner string) (err error) {
 	var request = newAPIRequest(http.MethodGet, proto.AdminCreateVol)
 	request.addParam("name", volName)
 	request.addParam("owner", owner)
 	request.addParam("capacity", "10")
 	if _, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	return
+}
+
+func (api *AdminAPI) GetVolumeSimpleInfoWithSetting(volName string) (vv *proto.SimpleVolView, setting []byte, err error) {
+	var request = newAPIRequest(http.MethodGet, proto.AdminGetVol)
+	request.addParam("name", volName)
+	var buf []byte
+	if buf, err = api.mc.serveRequest(request); err != nil {
+		return
+	}
+	vv = &proto.SimpleVolView{}
+	if err = json.Unmarshal(buf, &vv); err != nil {
 		return
 	}
 	return

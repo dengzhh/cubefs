@@ -16,6 +16,7 @@ package meta
 
 import (
 	"fmt"
+	"os"
 	"strconv"
 	"sync"
 	"syscall"
@@ -31,7 +32,7 @@ import (
 // API implementations
 //
 // txIcreate create inode and tx together
-func (mw *MetaWrapper) txIcreate(tx *Transaction, mp *MetaPartition, mode, uid, gid uint32,
+func (mw *MetaWrapper) txIcreate(tx *Transaction, mp *MetaPartition, parentID uint64, mode, uid, gid uint32,
 	target []byte, quotaIds []uint32, fullPath string) (status int, info *proto.InodeInfo, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
@@ -49,6 +50,7 @@ func (mw *MetaWrapper) txIcreate(tx *Transaction, mp *MetaPartition, mode, uid, 
 		Target:      target,
 		QuotaIds:    quotaIds,
 		TxInfo:      tx.txInfo,
+		ParentIno:   parentID,
 	}
 	req.FullPaths = []string{fullPath}
 
@@ -103,7 +105,7 @@ func (mw *MetaWrapper) txIcreate(tx *Transaction, mp *MetaPartition, mode, uid, 
 	return status, resp.Info, nil
 }
 
-func (mw *MetaWrapper) quotaIcreate(mp *MetaPartition, mode, uid, gid uint32, target []byte, quotaIds []uint32, fullPath string) (status int,
+func (mw *MetaWrapper) quotaIcreate(mp *MetaPartition, parentIno uint64, mode, uid, gid uint32, target []byte, quotaIds []uint32, fullPath string) (status int,
 	info *proto.InodeInfo, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
@@ -118,6 +120,7 @@ func (mw *MetaWrapper) quotaIcreate(mp *MetaPartition, mode, uid, gid uint32, ta
 		Gid:         gid,
 		Target:      target,
 		QuotaIds:    quotaIds,
+		ParentIno:   parentIno,
 	}
 	req.FullPaths = []string{fullPath}
 
@@ -163,7 +166,7 @@ func (mw *MetaWrapper) quotaIcreate(mp *MetaPartition, mode, uid, gid uint32, ta
 	return statusOK, resp.Info, nil
 }
 
-func (mw *MetaWrapper) icreate(mp *MetaPartition, mode, uid, gid uint32, target []byte, fullPath string) (status int,
+func (mw *MetaWrapper) icreate(mp *MetaPartition, parentIno uint64, mode, uid, gid uint32, target []byte, fullPath string) (status int,
 	info *proto.InodeInfo, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
@@ -177,6 +180,7 @@ func (mw *MetaWrapper) icreate(mp *MetaPartition, mode, uid, gid uint32, target 
 		Uid:         uid,
 		Gid:         gid,
 		Target:      target,
+		ParentIno:   parentIno,
 	}
 	req.FullPaths = []string{fullPath}
 
@@ -297,7 +301,7 @@ func (mw *MetaWrapper) SendTxPack(req proto.TxPack, resp interface{}, Opcode uin
 	return
 }
 
-func (mw *MetaWrapper) txIunlink(tx *Transaction, mp *MetaPartition, inode uint64, fullPath string) (status int, info *proto.InodeInfo, err error) {
+func (mw *MetaWrapper) txIunlink(tx *Transaction, mp *MetaPartition, parentIno, inode uint64, fullPath string) (status int, info *proto.InodeInfo, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("txIunlink", err, bgTime, 1)
@@ -308,6 +312,7 @@ func (mw *MetaWrapper) txIunlink(tx *Transaction, mp *MetaPartition, inode uint6
 		PartitionID: mp.PartitionID,
 		Inode:       inode,
 		TxInfo:      tx.txInfo,
+		ParentIno:   parentIno,
 	}
 	req.FullPaths = []string{fullPath}
 	resp := new(proto.TxUnlinkInodeResponse)
@@ -326,7 +331,7 @@ func (mw *MetaWrapper) txIunlink(tx *Transaction, mp *MetaPartition, inode uint6
 	return statusOK, resp.Info, nil
 }
 
-func (mw *MetaWrapper) iunlink(mp *MetaPartition, inode uint64, fullPath string) (status int, info *proto.InodeInfo, err error) {
+func (mw *MetaWrapper) iunlink(mp *MetaPartition, parentIno, inode uint64, fullPath string) (status int, info *proto.InodeInfo, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("iunlink", err, bgTime, 1)
@@ -344,6 +349,7 @@ func (mw *MetaWrapper) iunlink(mp *MetaPartition, inode uint64, fullPath string)
 		PartitionID: mp.PartitionID,
 		Inode:       inode,
 		UniqID:      uniqID,
+		ParentIno:   parentIno,
 	}
 	req.FullPaths = []string{fullPath}
 
@@ -1118,6 +1124,57 @@ func (mw *MetaWrapper) batchIget(wg *sync.WaitGroup, mp *MetaPartition, inodes [
 	}
 }
 
+func (mw *MetaWrapper) getAllInodes(mp *MetaPartition, cursor *uint64, limit uint64, ftype os.FileMode) (inodes []uint64, err error) {
+	var status int
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("getAllInodes", err, bgTime, 1)
+	}()
+
+	req := &proto.AllInodesGetRequest{
+		VolName:     mw.volname,
+		PartitionID: mp.PartitionID,
+		Cursor:      *cursor,
+		Limit:       limit,
+		Type:        ftype,
+	}
+
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpMetaGetAllInodes
+	packet.PartitionID = mp.PartitionID
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogErrorf("getAllInodes: req(%v) err(%v)", *req, err)
+		return
+	}
+
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
+	}()
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("getAllInodes: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+
+	status = parseStatus(packet.ResultCode)
+	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
+		log.LogErrorf("getAllInodes: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return
+	}
+	resp := new(proto.AllInodesGetResponse)
+	err = packet.UnmarshalData(resp)
+	if err != nil || resp.Inodes == nil {
+		log.LogErrorf("iget: packet(%v) mp(%v) req(%v) err(%v) PacketData(%v)", packet, mp, *req, err, string(packet.Data))
+		return
+	}
+	*cursor = resp.Cursor
+	return resp.Inodes, err
+}
+
 func (mw *MetaWrapper) readdir(mp *MetaPartition, parentID uint64) (status int, children []proto.Dentry, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
@@ -1437,7 +1494,7 @@ func (mw *MetaWrapper) truncate(mp *MetaPartition, inode, size uint64, fullPath 
 	return statusOK, nil
 }
 
-func (mw *MetaWrapper) txIlink(tx *Transaction, mp *MetaPartition, inode uint64, fullPath string) (status int, info *proto.InodeInfo, err error) {
+func (mw *MetaWrapper) txIlink(tx *Transaction, mp *MetaPartition, ParentIno, inode uint64, fullPath string) (status int, info *proto.InodeInfo, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("txIlink", err, bgTime, 1)
@@ -1448,6 +1505,7 @@ func (mw *MetaWrapper) txIlink(tx *Transaction, mp *MetaPartition, inode uint64,
 		PartitionID: mp.PartitionID,
 		Inode:       inode,
 		TxInfo:      tx.txInfo,
+		ParentIno:   ParentIno,
 	}
 	req.FullPaths = []string{fullPath}
 
@@ -1469,11 +1527,11 @@ func (mw *MetaWrapper) txIlink(tx *Transaction, mp *MetaPartition, inode uint64,
 	return statusOK, resp.Info, nil
 }
 
-func (mw *MetaWrapper) ilink(mp *MetaPartition, inode uint64, fullPath string) (status int, info *proto.InodeInfo, err error) {
-	return mw.ilinkWork(mp, inode, proto.OpMetaLinkInode, fullPath)
+func (mw *MetaWrapper) ilink(mp *MetaPartition, parentID, inode uint64, fullPath string) (status int, info *proto.InodeInfo, err error) {
+	return mw.ilinkWork(mp, parentID, inode, proto.OpMetaLinkInode, fullPath)
 }
 
-func (mw *MetaWrapper) ilinkWork(mp *MetaPartition, inode uint64, op uint8, fullPath string) (status int, info *proto.InodeInfo, err error) {
+func (mw *MetaWrapper) ilinkWork(mp *MetaPartition, parentIno, inode uint64, op uint8, fullPath string) (status int, info *proto.InodeInfo, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("ilink", err, bgTime, 1)
@@ -1491,6 +1549,7 @@ func (mw *MetaWrapper) ilinkWork(mp *MetaPartition, inode uint64, op uint8, full
 		PartitionID: mp.PartitionID,
 		Inode:       inode,
 		UniqID:      uniqID,
+		ParentIno:   parentIno,
 	}
 	req.FullPaths = []string{fullPath}
 
@@ -1538,7 +1597,7 @@ func (mw *MetaWrapper) ilinkWork(mp *MetaPartition, inode uint64, op uint8, full
 	return statusOK, resp.Info, nil
 }
 
-func (mw *MetaWrapper) setattr(mp *MetaPartition, inode uint64, valid, mode, uid, gid uint32, atime, mtime int64) (status int, err error) {
+func (mw *MetaWrapper) setattr(mp *MetaPartition, inode uint64, valid, mode, uid, gid uint32, atime, mtime int64, length uint64) (status int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("setattr", err, bgTime, 1)
@@ -1554,6 +1613,7 @@ func (mw *MetaWrapper) setattr(mp *MetaPartition, inode uint64, valid, mode, uid
 		Gid:         gid,
 		AccessTime:  atime,
 		ModifyTime:  mtime,
+		Size:        length,
 	}
 
 	packet := proto.NewPacketReqID()
@@ -2420,6 +2480,58 @@ func (mw *MetaWrapper) updateXAttrs(mp *MetaPartition, inode uint64, filesInc in
 
 	log.LogDebugf("updateXAttrs: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
 	return nil
+}
+
+func (mw *MetaWrapper) appendXAttrs(mp *MetaPartition, inode uint64, keys, values [][]byte) (attrs map[string]string, err error) {
+	bgTime := stat.BeginStat()
+	defer func() {
+		stat.EndStat("appendXAttrs", err, bgTime, 1)
+	}()
+
+	req := &proto.AppendXAttrRequest{
+		VolName:     mw.volname,
+		PartitionId: mp.PartitionID,
+		Inode:       inode,
+		Keys:        keys,
+		Values:      values,
+	}
+	packet := proto.NewPacketReqID()
+	packet.Opcode = proto.OpMetaAppendXAttr
+	packet.PartitionID = mp.PartitionID
+	err = packet.MarshalData(req)
+	if err != nil {
+		log.LogErrorf("appendXAttrs: matshal packet fail, err(%v)", err)
+		return
+	}
+	log.LogDebugf("appendXAttrs: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+
+	metric := exporter.NewTPCnt(packet.GetOpMsg())
+	defer func() {
+		metric.SetWithLabels(err, map[string]string{exporter.Vol: mw.volname})
+	}()
+
+	packet, err = mw.sendToMetaPartition(mp, packet)
+	if err != nil {
+		log.LogErrorf("readdironly: packet(%v) mp(%v) req(%v) err(%v)", packet, mp, *req, err)
+		return
+	}
+
+	status := parseStatus(packet.ResultCode)
+	if status != statusOK {
+		err = errors.New(packet.GetResultMsg())
+		log.LogErrorf("readdironly: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+		return
+	}
+
+	resp := new(proto.AppendXAttrResponse)
+	if err = packet.UnmarshalData(resp); err != nil {
+		log.LogErrorf("append xattr: packet(%v) mp(%v) req(%v) err(%v) PacketData(%v)", packet, mp, *req, err, string(packet.Data))
+		return
+	}
+	attrs = resp.Attrs
+
+	log.LogDebugf("appendXAttrs: packet(%v) mp(%v) req(%v) result(%v)", packet, mp, *req, packet.GetResultMsg())
+	return
 }
 
 func (mw *MetaWrapper) batchSetInodeQuota(mp *MetaPartition, inodes []uint64, quotaId uint32,

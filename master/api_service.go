@@ -1982,9 +1982,10 @@ func (m *Server) checkCreateReq(req *createVolReq) (err error) {
 		return fmt.Errorf("vol type %d is illegal", req.volType)
 	}
 
+	/* Comment for the support of meta-only volume(used in JuiceFS)
 	if req.capacity == 0 {
 		return fmt.Errorf("vol capacity can't be zero, %d", req.capacity)
-	}
+	}*/
 
 	if req.size != 0 && req.size <= 10 {
 		return fmt.Errorf("datapartition size must be bigger than 10 G")

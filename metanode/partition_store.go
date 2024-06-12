@@ -52,6 +52,7 @@ const (
 	metadataFileTmp = ".meta"
 	uniqIDFile      = "uniqID"
 	uniqCheckerFile = "uniqChecker"
+	kvFile          = "kv"
 )
 
 func (mp *metaPartition) loadMetadata() (err error) {

@@ -16,6 +16,7 @@ package raftstore_db
 
 import (
 	"fmt"
+	"strings"
 
 	"os"
 
@@ -186,6 +187,82 @@ func (rs *RocksDBStore) SeekForPrefix(prefix []byte) (result map[string][]byte, 
 	for ; it.ValidForPrefix(prefix); it.Next() {
 		key := it.Key().Data()
 		value := it.Value().Data()
+		valueByte := make([]byte, len(value))
+		copy(valueByte, value)
+		result[string(key)] = valueByte
+		it.Key().Free()
+		it.Value().Free()
+	}
+	if err := it.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+func (rs *RocksDBStore) SeekForPrefixAndFilter(prefix []byte, kfilter string, vfilter string) (result map[string][]byte, err error) {
+	result = make(map[string][]byte)
+	snapshot := rs.RocksDBSnapshot()
+	it := rs.Iterator(snapshot)
+	defer func() {
+		it.Close()
+		rs.ReleaseSnapshot(snapshot)
+	}()
+	it.Seek(prefix)
+	for ; it.ValidForPrefix(prefix); it.Next() {
+		key := it.Key().Data()
+		if len(kfilter) > 2 {
+			switch kfilter[:2] {
+			case "ge":
+				if !(string(key[len(prefix):]) >= kfilter[2:]) {
+					continue
+				}
+			case "gt":
+				if !(string(key[len(prefix):]) > kfilter[2:]) {
+					continue
+				}
+			case "le":
+				if !(string(key[len(prefix):]) <= kfilter[2:]) {
+					continue
+				}
+			case "lt":
+				if !(string(key[len(prefix):]) < kfilter[2:]) {
+					continue
+				}
+			case "ct":
+				if !strings.Contains(string(key[len(prefix):]), kfilter[2:]) {
+					continue
+				}
+			default:
+				continue
+			}
+		}
+		value := it.Value().Data()
+		if len(vfilter) > 2 {
+			switch vfilter[:2] {
+			case "ge":
+				if !(string(value) >= vfilter[2:]) {
+					continue
+				}
+			case "gt":
+				if !(string(value) > vfilter[2:]) {
+					continue
+				}
+			case "le":
+				if !(string(value) <= vfilter[2:]) {
+					continue
+				}
+			case "lt":
+				if !(string(value) < vfilter[2:]) {
+					continue
+				}
+			case "ct":
+				if !strings.Contains(string(value), vfilter[2:]) {
+					continue
+				}
+			default:
+				continue
+			}
+		}
 		valueByte := make([]byte, len(value))
 		copy(valueByte, value)
 		result[string(key)] = valueByte

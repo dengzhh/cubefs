@@ -1365,7 +1365,7 @@ func (c *client) setattr(info *proto.InodeInfo, valid uint32, mode, uid, gid uin
 		mode = info.Mode &^ uint32(0777) // clear rwx mode bit
 		mode |= fuseMode
 	}
-	return c.mw.Setattr(info.Inode, valid, mode, uid, gid, atime, mtime)
+	return c.mw.Setattr(info.Inode, valid, mode, uid, gid, atime, mtime, 0)
 }
 
 func (c *client) create(pino uint64, name string, mode uint32, fullPath string) (info *proto.InodeInfo, err error) {

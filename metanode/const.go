@@ -90,6 +90,9 @@ type (
 
 	// Client -> MetaNode
 	GetUniqIDResp = proto.GetUniqIDResponse
+
+	GetAllInodesReq  = proto.AllInodesGetRequest
+	GetAllInodesResp = proto.AllInodesGetResponse
 )
 
 // op code should be fixed, order change will cause raft fsm log apply fail

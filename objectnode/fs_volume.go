@@ -2895,7 +2895,7 @@ func (v *Volume) copyFile(parentID uint64, newFileName string, sourceFileInode u
 	if err = v.mw.DentryCreate_ll(parentID, newFileName, sourceFileInode, mode, newPath); err != nil {
 		return
 	}
-	if info, err = v.mw.InodeLink_ll(sourceFileInode, sourcePath); err != nil {
+	if info, err = v.mw.InodeLink_ll(parentID, sourceFileInode, sourcePath); err != nil {
 		return
 	}
 	return

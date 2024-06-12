@@ -169,7 +169,8 @@ const (
 	OpMetaTxGet          uint8 = 0xAB
 
 	//Operations: Client -> MetaNode.
-	OpMetaGetUniqID uint8 = 0xAC
+	OpMetaGetUniqID    uint8 = 0xAC
+	OpMetaGetAllInodes uint8 = 0xAD
 
 	// Commons
 	OpNoSpaceErr         uint8 = 0xEE
@@ -193,6 +194,7 @@ const (
 	OpMetaUpdateXAttr       uint8 = 0x3B
 	OpMetaReadDirOnly       uint8 = 0x3C
 	OpUploadPartConflictErr uint8 = 0x3D
+	OpMetaAppendXAttr       uint8 = 0x3E
 
 	// ebs obj meta
 	OpMetaObjExtentAdd       uint8 = 0xDD
@@ -467,6 +469,8 @@ func (p *Packet) GetOpMsg() (m string) {
 		m = "OpMetaBatchGetXAttr"
 	case OpMetaUpdateXAttr:
 		m = "OpMetaUpdateXAttr"
+	case OpMetaAppendXAttr:
+		m = "OpMetaAppendXAttr"
 	case OpCreateMultipart:
 		m = "OpCreateMultipart"
 	case OpGetMultipart:

@@ -77,6 +77,9 @@ func (mp *metaPartition) fsmCreateInode(ino *Inode) (status uint8) {
 	if _, ok := mp.inodeTree.ReplaceOrInsert(ino, false); !ok {
 		status = proto.OpExistErr
 	}
+	if !proto.IsDir(ino.Type) {
+		mp.addExtendParentIno(ino.Inode, ino.ParentIno)
+	}
 
 	return
 }
@@ -138,6 +141,7 @@ func (mp *metaPartition) fsmCreateLinkInode(ino *Inode, uniqID uint64) (resp *In
 		return
 	}
 	i.IncNLink()
+	mp.addExtendParentIno(ino.Inode, ino.ParentIno)
 	return
 }
 
@@ -270,6 +274,9 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode, uniqID uint64) (resp *InodeR
 	}
 
 	inode.DecNLink()
+	if !proto.IsDir(inode.Type) {
+		mp.delExtendParentIno(ino.Inode, ino.ParentIno) // ino.ParentIno differ from inode.ParentIno which would not be the requested.
+	}
 
 	//Fix#760: when nlink == 0, push into freeList and delay delete inode after 7 days
 	if inode.IsTempFile() {

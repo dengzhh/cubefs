@@ -19,6 +19,9 @@ import (
 	"github.com/cubefs/cubefs/util/btree"
 )
 
+const TrashInode uint64 = 0x7FFFFFFF10000000
+const TrashName = ".trash"
+
 type MetaPartition struct {
 	PartitionID uint64
 	Start       uint64
@@ -81,6 +84,10 @@ func (mw *MetaWrapper) getPartitionByInode(ino uint64) *MetaPartition {
 	var mp *MetaPartition
 	mw.RLock()
 	defer mw.RUnlock()
+
+	if ino >= TrashInode { // For JuiceceFS trash directory
+		ino = ino - TrashInode + 1
+	}
 
 	pivot := &MetaPartition{Start: ino}
 	mw.ranges.DescendLessOrEqual(pivot, func(i btree.Item) bool {

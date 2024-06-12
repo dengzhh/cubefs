@@ -429,6 +429,10 @@ func (partition *DataPartition) convertToDataPartitionResponse() (dpr *proto.Dat
 	dpr.ReplicaNum = partition.ReplicaNum
 	dpr.Hosts = make([]string, len(partition.Hosts))
 	copy(dpr.Hosts, partition.Hosts)
+        dpr.Disks = make([]string, len(partition.Replicas))
+        for i, _ := range dpr.Disks {
+                dpr.Disks[i] = partition.Replicas[i].Addr + ":" + partition.Replicas[i].DiskPath
+        }
 	dpr.LeaderAddr = partition.getLeaderAddr()
 	dpr.IsRecover = partition.isRecover
 	dpr.IsDiscard = partition.IsDiscard

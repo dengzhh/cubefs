@@ -208,6 +208,12 @@ func (m *Server) loadMetadata() {
 		panic(err)
 	}
 	log.LogInfo("action[loadQuota] end")
+
+	log.LogInfo("action[loadKv] begin")
+	if err = m.kv.loadKvStore(); err != nil {
+		panic(any(err))
+	}
+	log.LogInfo("action[loadKv] end")
 }
 
 func (m *Server) clearMetadata() {

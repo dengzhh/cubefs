@@ -246,6 +246,10 @@ const (
 	opSyncDeleteDecommissionDisk uint32 = 0x29
 	opSyncUpdateDecommissionDisk uint32 = 0x2A
 
+	opSyncAddKv    uint32 = 0x2B
+	opSyncDelKv    uint32 = 0x2C
+	opSyncUpdateKv uint32 = 0x2D
+
 	DecommissionDiskAcronym = "dd"
 	DecommissionDiskPrefix  = keySeparator + DecommissionDiskAcronym + keySeparator
 
@@ -300,4 +304,5 @@ const (
 	volWarnUsedRatio      = 0.9
 	volCachePrefix        = keySeparator + volNameAcronym + keySeparator
 	quotaPrefix           = keySeparator + "quota" + keySeparator
+	kvPrefix              = keySeparator + "kv" + keySeparator
 )

@@ -382,6 +382,20 @@ func (m *Server) registerAPIRoutes(router *mux.Router) {
 		Path(proto.AdminQueryDataPartitionDecommissionStatus).
 		HandlerFunc(m.queryDataPartitionDecommissionStatus)
 
+	// Kv APIs
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.KvAdd).
+		HandlerFunc(m.addKeyParam)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.KvGet).
+		HandlerFunc(m.getKeyParam)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.KvUpdate).
+		HandlerFunc(m.updateKeyParam)
+	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
+		Path(proto.KvDel).
+		HandlerFunc(m.delKeyParam)
+
 	// meta node management APIs
 	router.NewRoute().Methods(http.MethodGet, http.MethodPost).
 		Path(proto.AddMetaNode).

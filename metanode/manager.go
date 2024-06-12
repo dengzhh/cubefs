@@ -252,6 +252,8 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opMetaPartitionTryToLeader(conn, p, remoteAddr)
 	case proto.OpMetaBatchInodeGet:
 		err = m.opMetaBatchInodeGet(conn, p, remoteAddr)
+	case proto.OpMetaGetAllInodes:
+		err = m.opMetaGetAllInodes(conn, p, remoteAddr)
 	case proto.OpMetaDeleteInode:
 		err = m.opMetaDeleteInode(conn, p, remoteAddr)
 	case proto.OpMetaBatchDeleteInode:
@@ -279,6 +281,8 @@ func (m *metadataManager) HandleMetadataOperation(conn net.Conn, p *Packet, remo
 		err = m.opMetaListXAttr(conn, p, remoteAddr)
 	case proto.OpMetaUpdateXAttr:
 		err = m.opMetaUpdateXAttr(conn, p, remoteAddr)
+	case proto.OpMetaAppendXAttr:
+		err = m.opMetaAppendXAttr(conn, p, remoteAddr)
 	// operations for multipart session
 	case proto.OpCreateMultipart:
 		err = m.opCreateMultipart(conn, p, remoteAddr)

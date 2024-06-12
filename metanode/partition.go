@@ -124,6 +124,7 @@ type OpInode interface {
 	UnlinkInodeBatch(req *BatchUnlinkInoReq, p *Packet, remoteAddr string) (err error)
 	InodeGet(req *InodeGetReq, p *Packet) (err error)
 	InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err error)
+	InodeGetAll(req *GetAllInodesReq, p *Packet) (err error)
 	CreateInodeLink(req *LinkInodeReq, p *Packet, remoteAddr string) (err error)
 	EvictInode(req *EvictInodeReq, p *Packet, remoteAddr string) (err error)
 	EvictInodeBatch(req *BatchEvictInodeReq, p *Packet, remoteAddr string) (err error)
@@ -148,6 +149,7 @@ type OpExtend interface {
 	RemoveXAttr(req *proto.RemoveXAttrRequest, p *Packet) (err error)
 	ListXAttr(req *proto.ListXAttrRequest, p *Packet) (err error)
 	UpdateXAttr(req *proto.UpdateXAttrRequest, p *Packet) (err error)
+	AppendXAttr(req *proto.AppendXAttrRequest, p *Packet) (err error)
 }
 
 // OpDentry defines the interface for the dentry operations.

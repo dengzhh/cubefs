@@ -18,6 +18,8 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/sdk/meta"
+	"os"
 	"time"
 
 	"github.com/cubefs/cubefs/proto"
@@ -47,6 +49,7 @@ func replyInfo(info *proto.InodeInfo, ino *Inode, quotaInfos map[uint32]*proto.M
 	info.AccessTime = time.Unix(ino.AccessTime, 0)
 	info.ModifyTime = time.Unix(ino.ModifyTime, 0)
 	info.QuotaInfos = quotaInfos
+	info.ParentIno = ino.ParentIno
 	return true
 }
 
@@ -92,22 +95,32 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet, remoteAddr st
 			auditlog.LogInodeOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.GetFullPath(), err, time.Since(start).Milliseconds(), inoID, 0)
 		}()
 	}
-	inoID, err = mp.nextInodeID()
-	if err != nil {
-		p.PacketErrorWithBody(proto.OpInodeFullErr, []byte(err.Error()))
-		return
+
+	if req.ParentIno == proto.RootIno && len(req.FullPaths) > 0 && req.FullPaths[0] == meta.TrashName {
+		inoID = meta.TrashInode
+	} else {
+		inoID, err = mp.nextInodeID()
+		if err != nil {
+			p.PacketErrorWithBody(proto.OpInodeFullErr, []byte(err.Error()))
+			return
+		}
+		if req.ParentIno == meta.TrashInode {
+			inoID += meta.TrashInode
+		}
 	}
+
 	ino := NewInode(inoID, req.Mode)
 	ino.Uid = req.Uid
 	ino.Gid = req.Gid
 	ino.LinkTarget = req.Target
+	ino.ParentIno = req.ParentIno
 
 	val, err := ino.Marshal()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return err
 	}
-	resp, err = mp.submit(opFSMCreateInode, val)
+	resp, err = mp.submit(opFSMCreateInode, val) // For OpExistErr, return status:OpExistErr, err:nil ???
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpAgain, []byte(err.Error()))
 		return err
@@ -126,7 +139,7 @@ func (mp *metaPartition) CreateInode(req *CreateInoReq, p *Packet, remoteAddr st
 			}
 		}
 	}
-	p.PacketErrorWithBody(status, reply)
+	p.PacketErrorWithBody(status, reply) // TODO: For OpExistErr, actually return status:OpNotExistErr, reply:nil ???
 	log.LogInfof("CreateInode req [%v] qinode [%v] success.", req, qinode)
 	return
 }
@@ -145,15 +158,24 @@ func (mp *metaPartition) QuotaCreateInode(req *proto.QuotaCreateInodeRequest, p 
 			auditlog.LogInodeOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.GetFullPath(), err, time.Since(start).Milliseconds(), inoID, 0)
 		}()
 	}
-	inoID, err = mp.nextInodeID()
-	if err != nil {
-		p.PacketErrorWithBody(proto.OpInodeFullErr, []byte(err.Error()))
-		return
+	if req.ParentIno == proto.RootIno && len(req.FullPaths) > 0 && req.FullPaths[0] == meta.TrashName {
+		inoID = meta.TrashInode
+	} else {
+		inoID, err = mp.nextInodeID()
+		if err != nil {
+			p.PacketErrorWithBody(proto.OpInodeFullErr, []byte(err.Error()))
+			return
+		}
+		if req.ParentIno == meta.TrashInode {
+			inoID += meta.TrashInode
+		}
 	}
+
 	ino := NewInode(inoID, req.Mode)
 	ino.Uid = req.Uid
 	ino.Gid = req.Gid
 	ino.LinkTarget = req.Target
+	ino.ParentIno = req.ParentIno
 
 	for _, quotaId := range req.QuotaIds {
 		status = mp.mqMgr.IsOverQuota(false, true, quotaId)
@@ -267,6 +289,7 @@ func (mp *metaPartition) TxUnlinkInode(req *proto.TxUnlinkInodeRequest, p *Packe
 		TxInfo: txInfo,
 	}
 
+	ti.Inode.ParentIno = req.ParentIno
 	val, err := ti.Marshal()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
@@ -312,6 +335,7 @@ func (mp *metaPartition) UnlinkInode(req *UnlinkInoReq, p *Packet, remoteAddr st
 		r, err = mp.submit(opFSMUnlinkInodeOnce, val)
 	} else {
 		ino := NewInode(req.Inode, 0)
+		ino.ParentIno = req.ParentIno
 		val, err = ino.Marshal()
 		if err != nil {
 			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
@@ -469,6 +493,38 @@ func (mp *metaPartition) InodeGetBatch(req *InodeGetReqBatch, p *Packet) (err er
 	return
 }
 
+func (mp *metaPartition) InodeGetAll(req *GetAllInodesReq, p *Packet) (err error) {
+	var count uint64
+	resp := &proto.AllInodesGetResponse{}
+	ino := NewInode(req.Cursor, 0)
+	max := NewInode(meta.TrashInode, 0)
+	mp.inodeTree.GetTree().AscendRange(ino, max, func(i BtreeItem) bool {
+		inode := i.(*Inode)
+		if os.FileMode(inode.Type).Type() != req.Type {
+			return true
+		}
+		if count == req.Limit {
+			resp.Cursor = inode.Inode
+			return false
+		}
+		resp.Inodes = append(resp.Inodes, inode.Inode)
+		count += 1
+		return true
+	})
+
+	if count < req.Limit { // indicate the end reached.
+		resp.Cursor = 0
+	}
+
+	data, err := json.Marshal(resp)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	p.PacketOkWithBody(data)
+	return
+}
+
 func (mp *metaPartition) TxCreateInodeLink(req *proto.TxLinkInodeRequest, p *Packet, remoteAddr string) (err error) {
 	start := time.Now()
 	if mp.IsEnableAuditLog() {
@@ -490,6 +546,7 @@ func (mp *metaPartition) TxCreateInodeLink(req *proto.TxLinkInodeRequest, p *Pac
 		TxInfo: txInfo,
 	}
 
+	ti.Inode.ParentIno = req.ParentIno
 	val, err := ti.Marshal()
 	if err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
@@ -537,6 +594,7 @@ func (mp *metaPartition) CreateInodeLink(req *LinkInodeReq, p *Packet, remoteAdd
 		r, err = mp.submit(opFSMCreateLinkInodeOnce, val)
 	} else {
 		ino := NewInode(req.Inode, 0)
+		ino.ParentIno = req.ParentIno
 		val, err = ino.Marshal()
 		if err != nil {
 			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
@@ -754,10 +812,18 @@ func (mp *metaPartition) TxCreateInode(req *proto.TxCreateInodeRequest, p *Packe
 			auditlog.LogInodeOp(remoteAddr, mp.GetVolName(), p.GetOpMsg(), req.GetFullPath(), err, time.Since(start).Milliseconds(), inoID, 0)
 		}()
 	}
-	inoID, err = mp.nextInodeID()
-	if err != nil {
-		p.PacketErrorWithBody(proto.OpInodeFullErr, []byte(err.Error()))
-		return
+
+	if req.ParentIno == proto.RootIno && len(req.FullPaths) > 0 && req.FullPaths[0] == meta.TrashName {
+		inoID = meta.TrashInode
+	} else {
+		inoID, err = mp.nextInodeID()
+		if err != nil {
+			p.PacketErrorWithBody(proto.OpInodeFullErr, []byte(err.Error()))
+			return
+		}
+		if req.ParentIno == meta.TrashInode {
+			inoID += meta.TrashInode
+		}
 	}
 
 	req.TxInfo.SetCreateInodeId(inoID)
@@ -784,6 +850,7 @@ func (mp *metaPartition) TxCreateInode(req *proto.TxCreateInodeRequest, p *Packe
 	txIno.Inode.Uid = req.Uid
 	txIno.Inode.Gid = req.Gid
 	txIno.Inode.LinkTarget = req.Target
+	txIno.Inode.ParentIno = req.ParentIno
 
 	if log.EnableDebug() {
 		log.LogDebugf("NewTxInode: TxInode: %v", txIno)

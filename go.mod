@@ -1,6 +1,6 @@
 module github.com/cubefs/cubefs
 
-go 1.17
+go 1.20
 
 replace (
 	github.com/jacobsa/fuse => ./depends/jacobsa/fuse

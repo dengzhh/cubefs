@@ -14,7 +14,7 @@ if [ "${use_clang}" != "" ]; then
     cgo_ldflags="-L${BuildDependsLibPath} -lrocksdb -lz -lbz2 -lsnappy -llz4 -lzstd -lc++"
 fi
 cgo_cflags="-I${BuildDependsIncludePath}"
-MODFLAGS=""
+MODFLAGS="all=-N -l"
 gomod=${2:-"on"}
 
 if [ "${gomod}" == "off" ]; then
@@ -54,8 +54,7 @@ LDFlags="-X 'github.com/cubefs/cubefs/proto.Version=${Version}' \
     -X 'github.com/cubefs/cubefs/proto.CommitID=${CommitID}' \
     -X 'github.com/cubefs/cubefs/proto.BranchName=${BranchName}' \
     -X 'github.com/cubefs/cubefs/proto.BuildTime=${BuildTime}' \
-    -X 'github.com/cubefs/cubefs/blobstore/util/version.version=${BranchName}/${CommitID}' \
-    -w -s"
+    -X 'github.com/cubefs/cubefs/blobstore/util/version.version=${BranchName}/${CommitID}'"
 
 NPROC=$(nproc 2>/dev/null)
 if [ -e /sys/fs/cgroup/cpu ] ; then
@@ -275,32 +274,32 @@ run_test_cover() {
 build_server() {
     pushd $SrcPath >/dev/null
     echo -n "build cfs-server   "
-    CGO_ENABLED=1 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/cfs-server ${SrcPath}/cmd/*.go && echo "success" || echo "failed"
+    CGO_ENABLED=1 go build -gcflags="${MODFLAGS}" -ldflags="${LDFlags}" -o ${BuildBinPath}/cfs-server ${SrcPath}/cmd/*.go && echo "success" || echo "failed"
     popd >/dev/null
 }
 
 build_clustermgr() {
-    CGO_ENABLED=1 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore ${SrcPath}/blobstore/cmd/clustermgr
+    CGO_ENABLED=1 go build -gcflags="${MODFLAGS}" -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore ${SrcPath}/blobstore/cmd/clustermgr
 }
 
 build_blobnode() {
-    CGO_ENABLED=1 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore ${SrcPath}/blobstore/cmd/blobnode
+    CGO_ENABLED=1 go build -gcflags="${MODFLAGS}" -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore ${SrcPath}/blobstore/cmd/blobnode
 }
 
 build_access() {
-    CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore ${SrcPath}/blobstore/cmd/access
+    CGO_ENABLED=0 go build -gcflags="${MODFLAGS}" -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore ${SrcPath}/blobstore/cmd/access
 }
 
 build_scheduler() {
-    CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore ${SrcPath}/blobstore/cmd/scheduler
+    CGO_ENABLED=0 go build -gcflags="${MODFLAGS}" -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore ${SrcPath}/blobstore/cmd/scheduler
 }
 
 build_proxy() {
-    CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore ${SrcPath}/blobstore/cmd/proxy
+    CGO_ENABLED=0 go build -gcflags="${MODFLAGS}" -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore ${SrcPath}/blobstore/cmd/proxy
 }
 
 build_blobstore_cli() {
-    CGO_ENABLED=1 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore/blobstore-cli ${SrcPath}/blobstore/cli/cli
+    CGO_ENABLED=1 go build -gcflags="${MODFLAGS}" -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/blobstore/blobstore-cli ${SrcPath}/blobstore/cli/cli
 }
 
 build_blobstore() {
@@ -313,22 +312,20 @@ build_blobstore() {
 build_client() {
     pushd $SrcPath >/dev/null
     echo -n "build cfs-client   "
-    CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/cfs-client ${SrcPath}/client/*.go  && echo "success" || echo "failed"
+    CGO_ENABLED=0 go build -gcflags="${MODFLAGS}" -ldflags="${LDFlags}" -o ${BuildBinPath}/cfs-client ${SrcPath}/client/*.go  && echo "success" || echo "failed"
     popd >/dev/null
 }
 
 build_authtool() {
     pushd $SrcPath >/dev/null
     echo -n "build cfs-authtool "
-    CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/cfs-authtool ${SrcPath}/authtool/*.go  && echo "success" || echo "failed"
-    popd >/dev/null
 }
 
 build_cli() {
     #cli need gorocksdb too
     pushd $SrcPath >/dev/null
     echo -n "build cfs-cli      "
-    CGO_ENABLED=1 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/cfs-cli ${SrcPath}/cli/*.go  && echo "success" || echo "failed"
+    CGO_ENABLED=1 go build -gcflags="${MODFLAGS}" -ldflags="${LDFlags}" -o ${BuildBinPath}/cfs-cli ${SrcPath}/cli/*.go  && echo "success" || echo "failed"
     #sh cli/build.sh ${BuildBinPath}/cfs-cli && echo "success" || echo "failed"
     popd >/dev/null
 }
@@ -336,7 +333,7 @@ build_cli() {
 build_fsck() {
     pushd $SrcPath >/dev/null
     echo -n "build cfs-fsck      "
-    CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/cfs-fsck ${SrcPath}/fsck/*.go  && echo "success" || echo "failed"
+    CGO_ENABLED=0 go build -gcflags="${MODFLAGS}" -ldflags="${LDFlags}" -o ${BuildBinPath}/cfs-fsck ${SrcPath}/fsck/*.go  && echo "success" || echo "failed"
     popd >/dev/null
 }
 
@@ -352,7 +349,7 @@ build_libsdkpre() {
     esac
     pushd $SrcPath > /dev/null
     echo -n "build libsdk: libcfs.so"
-    CGO_ENABLED=1 go build $MODFLAGS -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -buildmode c-shared -o ${TargetFile} ${SrcPath}/libsdk/*.go && echo "success" || echo "failed"
+    CGO_ENABLED=1 go build -gcflags="${MODFLAGS}" -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -buildmode c-shared -o ${TargetFile} ${SrcPath}/libsdk/*.go && echo "success" || echo "failed"
     popd > /dev/null
 }
 
@@ -368,7 +365,7 @@ build_libsdk() {
     esac
     pushd $SrcPath >/dev/null
     echo -n "build libsdk: libcfs.so       "
-    CGO_ENABLED=1 go build $MODFLAGS -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -buildmode c-shared -o ${TargetFile} ${SrcPath}/libsdk/*.go && echo "success" || echo "failed"
+    CGO_ENABLED=0 go build -gcflags="${MODFLAGS}" -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/fdstore ${SrcPath}/fdstore/*.go  && echo "success" || echo "failed"
     popd >/dev/null
 
     pushd $SrcPath/java >/dev/null
@@ -383,20 +380,20 @@ build_libsdk() {
 build_fdstore() {
     pushd $SrcPath >/dev/null
     echo -n "build fdstore "
-    CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/fdstore ${SrcPath}/fdstore/*.go  && echo "success" || echo "failed"
+    CGO_ENABLED=0 go build -gcflags="${MODFLAGS}" -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/fdstore ${SrcPath}/fdstore/*.go  && echo "success" || echo "failed"
     popd >/dev/null
 }
 
 build_preload() {
     pushd $SrcPath >/dev/null
     echo -n "build cfs-preload   "
-    CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/cfs-preload ${SrcPath}/preload/*.go && echo "success" || echo "failed"
+    CGO_ENABLED=0 go build -gcflags="${MODFLAGS}" -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/cfs-preload ${SrcPath}/preload/*.go && echo "success" || echo "failed"
 }
 
 build_bcache(){
     pushd $SrcPath >/dev/null
     echo -n "build cfs-blockcache      "
-    CGO_ENABLED=0 go build ${MODFLAGS} -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/cfs-bcache ${SrcPath}/blockcache/*.go  && echo "success" || echo "failed"
+    CGO_ENABLED=0 go build -gcflags="${MODFLAGS}" -gcflags=all=-trimpath=${SrcPath} -asmflags=all=-trimpath=${SrcPath} -ldflags="${LDFlags}" -o ${BuildBinPath}/cfs-bcache ${SrcPath}/blockcache/*.go  && echo "success" || echo "failed"
     popd >/dev/null
 }
 

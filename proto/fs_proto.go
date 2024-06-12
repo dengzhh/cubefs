@@ -26,6 +26,7 @@ const (
 	RootIno    = uint64(1)
 	SummaryKey = "cbfs.dir.summary"
 	QuotaKey   = "qa"
+	ParentKey  = "parent"
 )
 
 const (
@@ -84,6 +85,7 @@ type InodeInfo struct {
 	ModifyTime time.Time                 `json:"mt"`
 	CreateTime time.Time                 `json:"ct"`
 	AccessTime time.Time                 `json:"at"`
+	ParentIno  uint64                    `json:"pino"`
 	Target     []byte                    `json:"tgt"`
 	QuotaInfos map[uint32]*MetaQuotaInfo `json:"qifs"`
 	expiration int64
@@ -185,6 +187,7 @@ type QuotaCreateInodeRequest struct {
 	Gid         uint32   `json:"gid"`
 	Target      []byte   `json:"tgt"`
 	QuotaIds    []uint32 `json:"qids"`
+	ParentIno   uint64   `json:"pino"`
 	RequestExtend
 }
 
@@ -195,6 +198,7 @@ type CreateInodeRequest struct {
 	Uid         uint32 `json:"uid"`
 	Gid         uint32 `json:"gid"`
 	Target      []byte `json:"tgt"`
+	ParentIno   uint64 `json:"pino"`
 	RequestExtend
 }
 
@@ -229,6 +233,7 @@ type TxCreateInodeRequest struct {
 	Target      []byte           `json:"tgt"`
 	QuotaIds    []uint32         `json:"qids"`
 	TxInfo      *TransactionInfo `json:"tx"`
+	ParentIno   uint64           `json:"pino"`
 	RequestExtend
 }
 
@@ -286,6 +291,7 @@ type LinkInodeRequest struct {
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
 	UniqID      uint64 `json:"uiq"`
+	ParentIno   uint64 `json:"pino"`
 	RequestExtend
 }
 
@@ -299,6 +305,7 @@ type TxLinkInodeRequest struct {
 	PartitionID uint64           `json:"pid"`
 	Inode       uint64           `json:"ino"`
 	TxInfo      *TransactionInfo `json:"tx"`
+	ParentIno   uint64           `json:"pino"`
 	RequestExtend
 }
 
@@ -326,6 +333,7 @@ type TxUnlinkInodeRequest struct {
 	Inode       uint64           `json:"ino"`
 	Evict       bool             `json:"evict"`
 	TxInfo      *TransactionInfo `json:"tx"`
+	ParentIno   uint64           `json:"pino"`
 	RequestExtend
 }
 
@@ -344,6 +352,7 @@ type UnlinkInodeRequest struct {
 	PartitionID uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
 	UniqID      uint64 `json:"uid"` //for request dedup
+	ParentIno   uint64 `json:"pino"`
 	RequestExtend
 }
 
@@ -552,6 +561,19 @@ type BatchInodeGetResponse struct {
 	Infos []*InodeInfo `json:"infos"`
 }
 
+type AllInodesGetRequest struct {
+	VolName     string      `json:"vol"`
+	PartitionID uint64      `json:"pid"`
+	Cursor      uint64      `json:"cursor"`
+	Limit       uint64      `json:"limit"`
+	Type        os.FileMode `json:"type"`
+}
+
+type AllInodesGetResponse struct {
+	Cursor uint64   `json:"cursor"`
+	Inodes []uint64 `json:"inos"`
+}
+
 // ReadDirRequest defines the request to read dir.
 type ReadDirRequest struct {
 	VolName     string `json:"vol"`
@@ -665,6 +687,7 @@ type SetAttrRequest struct {
 	ModifyTime  int64  `json:"mt"`
 	AccessTime  int64  `json:"at"`
 	Valid       uint32 `json:"valid"`
+	Size        uint64 `json:"sz"`
 }
 
 const (
@@ -673,6 +696,7 @@ const (
 	AttrGid
 	AttrModifyTime
 	AttrAccessTime
+	AttrSize
 )
 
 // DeleteInodeRequest defines the request to delete an inode.
@@ -781,6 +805,21 @@ type UpdateXAttrRequest struct {
 	Inode       uint64 `json:"ino"`
 	Key         string `json:"key"`
 	Value       string `json:"val"`
+}
+
+type AppendXAttrRequest struct {
+	VolName     string   `json:"vol"`
+	PartitionId uint64   `json:"pid"`
+	Inode       uint64   `json:"ino"`
+	Keys        [][]byte `json:"keys"`
+	Values      [][]byte `json:"vals"`
+}
+
+type AppendXAttrResponse struct {
+	VolName     string            `json:"vol"`
+	PartitionId uint64            `json:"pid"`
+	Inode       uint64            `json:"ino"`
+	Attrs       map[string]string `json:"attrs"`
 }
 
 type MultipartInfo struct {

@@ -37,23 +37,28 @@ var (
 
 // Inode wraps necessary properties of `Inode` information in the file system.
 // Marshal exporterKey:
-//  +-------+-------+
-//  | item  | Inode |
-//  +-------+-------+
-//  | bytes |   8   |
-//  +-------+-------+
+//
+//	+-------+-------+
+//	| item  | Inode |
+//	+-------+-------+
+//	| bytes |   8   |
+//	+-------+-------+
+//
 // Marshal value:
-//  +-------+------+------+-----+----+----+----+--------+------------------+
-//  | item  | Type | Size | Gen | CT | AT | MT | ExtLen | MarshaledExtents |
-//  +-------+------+------+-----+----+----+----+--------+------------------+
-//  | bytes |  4   |  8   |  8  | 8  | 8  | 8  |   4    |      ExtLen      |
-//  +-------+------+------+-----+----+----+----+--------+------------------+
+//
+//	+-------+------+------+-----+----+----+----+--------+------------------+
+//	| item  | Type | Size | Gen | CT | AT | MT | ExtLen | MarshaledExtents |
+//	+-------+------+------+-----+----+----+----+--------+------------------+
+//	| bytes |  4   |  8   |  8  | 8  | 8  | 8  |   4    |      ExtLen      |
+//	+-------+------+------+-----+----+----+----+--------+------------------+
+//
 // Marshal entity:
-//  +-------+-----------+--------------+-----------+--------------+
-//  | item  | KeyLength | MarshaledKey | ValLength | MarshaledVal |
-//  +-------+-----------+--------------+-----------+--------------+
-//  | bytes |     4     |   KeyLength  |     4     |   ValLength  |
-//  +-------+-----------+--------------+-----------+--------------+
+//
+//	+-------+-----------+--------------+-----------+--------------+
+//	| item  | KeyLength | MarshaledKey | ValLength | MarshaledVal |
+//	+-------+-----------+--------------+-----------+--------------+
+//	| bytes |     4     |   KeyLength  |     4     |   ValLength  |
+//	+-------+-----------+--------------+-----------+--------------+
 type Inode struct {
 	sync.RWMutex
 	Inode      uint64 // Inode ID
@@ -69,6 +74,7 @@ type Inode struct {
 	NLink      uint32 // NodeLink counts
 	Flag       int32
 	Reserved   uint64 // reserved space
+	ParentIno  uint64
 	//Extents    *ExtentsTree
 	Extents    *SortedExtents
 	ObjExtents *SortedObjExtents
@@ -400,6 +406,9 @@ func (i *Inode) MarshalValue() (val []byte) {
 	if err = binary.Write(buff, binary.BigEndian, &i.Reserved); err != nil {
 		panic(err)
 	}
+	if err = binary.Write(buff, binary.BigEndian, &i.ParentIno); err != nil {
+		panic(err)
+	}
 
 	if i.Reserved == InodeV2Flag {
 		// marshal ExtentsKey
@@ -486,6 +495,9 @@ func (i *Inode) UnmarshalValue(val []byte) (err error) {
 		return
 	}
 	if err = binary.Read(buff, binary.BigEndian, &i.Reserved); err != nil {
+		return
+	}
+	if err = binary.Read(buff, binary.BigEndian, &i.ParentIno); err != nil {
 		return
 	}
 	if buff.Len() == 0 {
@@ -700,6 +712,9 @@ func (i *Inode) SetAttr(req *SetattrRequest) {
 	}
 	if req.Valid&proto.AttrModifyTime != 0 {
 		i.ModifyTime = req.ModifyTime
+	}
+	if req.Valid&proto.AttrSize != 0 {
+		i.Size = req.Size
 	}
 	i.Unlock()
 }

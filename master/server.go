@@ -126,6 +126,7 @@ type Server struct {
 	reverseProxy    *httputil.ReverseProxy
 	metaReady       bool
 	apiServer       *http.Server
+	kv              *Kv
 }
 
 // NewServer creates a new server
@@ -154,6 +155,7 @@ func (m *Server) Start(cfg *config.Config) (err error) {
 	}
 	m.initCluster()
 	m.initUser()
+	m.initKv()
 	m.cluster.partition = m.partition
 	m.cluster.idAlloc.partition = m.partition
 	MasterSecretKey := cfg.GetString(SecretKey)
@@ -398,4 +400,8 @@ func (m *Server) initCluster() {
 
 func (m *Server) initUser() {
 	m.user = newUser(m.fsm, m.partition)
+}
+
+func (m *Server) initKv() {
+	m.kv = newKv(m.fsm, m.partition)
 }

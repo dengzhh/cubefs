@@ -1543,6 +1543,32 @@ func (m *metadataManager) opMetaBatchInodeGet(conn net.Conn, p *Packet,
 	return
 }
 
+func (m *metadataManager) opMetaGetAllInodes(conn net.Conn, p *Packet,
+	remoteAddr string) (err error) {
+	req := &proto.AllInodesGetRequest{}
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+	mp, err := m.getPartition(req.PartitionID)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+	if !mp.IsFollowerRead() && !m.serveProxy(conn, mp, p) {
+		return
+	}
+	err = mp.InodeGetAll(req, p)
+	m.respondToClient(conn, p)
+	log.LogDebugf("%s [opMetaGetAllInodes] req: %d - %v, resp: %v, "+
+		"body: %s", remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
+	return
+}
+
 func (m *metadataManager) opMetaPartitionTryToLeader(conn net.Conn, p *Packet,
 	remoteAddr string) (err error) {
 	mp, err := m.getPartition(p.PartitionID)
@@ -1636,7 +1662,32 @@ func (m *metadataManager) opMetaUpdateXAttr(conn net.Conn, p *Packet, remoteAddr
 	}
 	err = mp.UpdateXAttr(req, p)
 	_ = m.respondToClient(conn, p)
-	log.LogDebugf("%s [opMetaSetXAttr] req: %d - %v, resp: %v, body: %s",
+	log.LogDebugf("%s [opMetaUpdateXAttr] req: %d - %v, resp: %v, body: %s",
+		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
+	return
+}
+
+func (m *metadataManager) opMetaAppendXAttr(conn net.Conn, p *Packet, remoteAddr string) (err error) {
+	req := &proto.AppendXAttrRequest{}
+	if err = json.Unmarshal(p.Data, req); err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+	mp, err := m.getPartition(req.PartitionId)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, ([]byte)(err.Error()))
+		m.respondToClient(conn, p)
+		err = errors.NewErrorf("[%v] req: %v, resp: %v", p.GetOpMsgWithReqAndResult(), req, err.Error())
+		return
+	}
+	if !m.serveProxy(conn, mp, p) {
+		return
+	}
+	err = mp.AppendXAttr(req, p)
+	_ = m.respondToClient(conn, p)
+	log.LogDebugf("%s [opMetaAppendXAttr] req: %d - %v, resp: %v, body: %s",
 		remoteAddr, p.GetReqID(), req, p.GetResultMsg(), p.Data)
 	return
 }

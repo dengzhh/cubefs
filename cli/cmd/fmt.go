@@ -206,7 +206,7 @@ var (
 func formatDataPartitionTableRow(view *proto.DataPartitionResponse) string {
 	return fmt.Sprintf(dataPartitionTablePattern,
 		view.PartitionID, view.ReplicaNum, formatDataPartitionStatus(view.Status), view.IsRecover, view.LeaderAddr,
-		strings.Join(view.Hosts, ","))
+		strings.Join(view.Disks, ","))
 }
 
 var (

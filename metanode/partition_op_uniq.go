@@ -87,8 +87,9 @@ func (mp *metaPartition) uniqCheckerEvict() (left int, evict int, err error) {
 var inodeOnceSize = 16
 
 type InodeOnce struct {
-	UniqID uint64
-	Inode  uint64 // Inode ID
+	UniqID    uint64
+	Inode     uint64 // Inode ID
+	ParentIno uint64
 }
 
 func (i *InodeOnce) Marshal() (val []byte) {
@@ -100,16 +101,18 @@ func (i *InodeOnce) Marshal() (val []byte) {
 
 func InodeOnceUnlinkMarshal(req *UnlinkInoReq) []byte {
 	inoOnce := &InodeOnce{
-		UniqID: req.UniqID,
-		Inode:  req.Inode,
+		UniqID:    req.UniqID,
+		Inode:     req.Inode,
+		ParentIno: req.ParentIno,
 	}
 	return inoOnce.Marshal()
 }
 
 func InodeOnceLinkMarshal(req *LinkInodeReq) []byte {
 	inoOnce := &InodeOnce{
-		UniqID: req.UniqID,
-		Inode:  req.Inode,
+		UniqID:    req.UniqID,
+		Inode:     req.Inode,
+		ParentIno: req.ParentIno,
 	}
 	return inoOnce.Marshal()
 }
@@ -121,5 +124,6 @@ func InodeOnceUnmarshal(val []byte) *InodeOnce {
 	}
 	i.UniqID = binary.BigEndian.Uint64(val[0:8])
 	i.Inode = binary.BigEndian.Uint64(val[8:16])
+	i.ParentIno = binary.BigEndian.Uint64(val[16:24])
 	return i
 }

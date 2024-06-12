@@ -17,6 +17,8 @@ package meta
 import (
 	"fmt"
 	syslog "log"
+	"math"
+	"os"
 	"path"
 	"sort"
 	"strconv"
@@ -176,12 +178,15 @@ func (mw *MetaWrapper) txCreate_ll(parentID uint64, name string, mode, uid, gid 
 			return nil, syscall.EAGAIN
 		}
 
-		status, info, err = mw.txIcreate(tx, mp, mode, uid, gid, target, quotaIds, fullPath)
+		status, info, err = mw.txIcreate(tx, mp, parentID, mode, uid, gid, target, quotaIds, fullPath)
 		if err == nil && status == statusOK {
 			goto create_dentry
 		} else if status == statusNoSpace {
 			log.LogErrorf("Create_ll status %v", status)
 			return nil, statusToErrno(status)
+		} else if status == statusExist || status == statusNoent { // for Exist error, actually return Noent ???
+			log.LogWarnf("Create_ll status %v", status)
+			return info, statusToErrno(status)
 		} else {
 			//sync cancel previous transaction before retry
 			tx.Rollback(mw)
@@ -263,7 +268,7 @@ func (mw *MetaWrapper) create_ll(parentID uint64, name string, mode, uid, gid ui
 		for i := 0; i < length; i++ {
 			index := (int(epoch) + i) % length
 			mp = rwPartitions[index]
-			status, info, err = mw.quotaIcreate(mp, mode, uid, gid, target, quotaIds, fullPath)
+			status, info, err = mw.quotaIcreate(mp, parentID, mode, uid, gid, target, quotaIds, fullPath)
 			if err == nil && status == statusOK {
 				goto create_dentry
 			} else if status == statusNoSpace {
@@ -275,12 +280,15 @@ func (mw *MetaWrapper) create_ll(parentID uint64, name string, mode, uid, gid ui
 		for i := 0; i < length; i++ {
 			index := (int(epoch) + i) % length
 			mp = rwPartitions[index]
-			status, info, err = mw.icreate(mp, mode, uid, gid, target, fullPath)
+			status, info, err = mw.icreate(mp, parentID, mode, uid, gid, target, fullPath)
 			if err == nil && status == statusOK {
 				goto create_dentry
 			} else if status == statusNoSpace {
 				log.LogErrorf("Create_ll status %v", status)
 				return nil, statusToErrno(status)
+			} else if status == statusExist || status == statusNoent { // for Exist error, actually return Noent ???
+				log.LogWarnf("Create_ll status %v", status)
+				return info, statusToErrno(status)
 			}
 		}
 
@@ -295,13 +303,13 @@ create_dentry:
 	}
 	if err != nil {
 		if status == statusOpDirQuota || status == statusNoSpace {
-			mw.iunlink(mp, info.Inode, fullPath)
+			mw.iunlink(mp, parentID, info.Inode, fullPath)
 			mw.ievict(mp, info.Inode, fullPath)
 		}
 		return nil, statusToErrno(status)
 	} else if status != statusOK {
 		if status != statusExist {
-			mw.iunlink(mp, info.Inode, fullPath)
+			mw.iunlink(mp, parentID, info.Inode, fullPath)
 			mw.ievict(mp, info.Inode, fullPath)
 		}
 		return nil, statusToErrno(status)
@@ -421,6 +429,66 @@ func (mw *MetaWrapper) BatchInodeGet(inodes []uint64) []*proto.InodeInfo {
 
 	log.LogDebugf("BatchInodeGet: inodesCnt(%d)", len(inodes))
 	return batchInfos
+}
+
+func (mw *MetaWrapper) GetAllInodes(ftype os.FileMode) (inodes []uint64, err error) {
+	var mp *MetaPartition
+	var cursor uint64
+	var inos []uint64
+
+	mp = mw.getPartitionByInode(1)
+	for mp != nil {
+		for {
+			inos, err = mw.getAllInodes(mp, &cursor, 10000, ftype)
+			if err != nil {
+				log.LogErrorf("GetAllInodes: getAllInodes failed, err(%v)", err)
+				return inodes, err
+			}
+			inodes = append(inodes, inos...)
+			if cursor != 0 {
+				continue
+			} else if mp.End >= math.MaxInt64 {
+				return inodes, nil
+			} else {
+				cursor = 0
+				mp = mw.getNextPartition(mp.End)
+			}
+		}
+	}
+	return inodes, nil
+}
+
+func (mw *MetaWrapper) GetAllInodesLimited(ftype os.FileMode, limit uint64, cursor, mpid *uint64) (inodes []uint64, err error) {
+	var mp *MetaPartition
+	var inos []uint64
+
+	if *mpid == 0 {
+		mp = mw.getPartitionByInode(1)
+	} else {
+		mp = mw.getPartitionByID(*mpid)
+	}
+	if mp == nil {
+		log.LogErrorf("GetAllInodes: No partition, mpid(%v)", *mpid)
+		return nil, syscall.ENOENT
+	}
+
+	inos, err = mw.getAllInodes(mp, cursor, limit, ftype)
+	if err != nil {
+		log.LogErrorf("GetAllInodes: getAllInodes failed, err(%v)", err)
+		return inodes, err
+	}
+	inodes = append(inodes, inos...)
+	if *cursor != 0 {
+		*mpid = mp.PartitionID
+		return inodes, nil
+	} else if mp.End >= math.MaxInt64 {
+		*mpid = 0
+		return inodes, nil
+	} else {
+		*cursor = 0
+		*mpid = mw.getNextPartition(mp.End).PartitionID
+		return inodes, nil
+	}
 }
 
 // InodeDelete_ll is a low-level api that removes specified inode immediately
@@ -638,7 +706,7 @@ func (mw *MetaWrapper) txDelete_ll(parentID uint64, name string, isDir bool, ful
 		var newSt int
 		var newErr error
 
-		newSt, info, newErr = mw.txIunlink(tx, mp, inode, fullPath)
+		newSt, info, newErr = mw.txIunlink(tx, mp, parentID, inode, fullPath)
 		return newSt, newErr
 	})
 
@@ -799,7 +867,7 @@ func (mw *MetaWrapper) Delete_ll_EX(parentID uint64, name string, isDir bool, fu
 		return nil, nil
 	}
 	log.LogDebugf("action[Delete_ll] parentID %v name %v", parentID, name)
-	status, info, err = mw.iunlink(mp, inode, fullPath)
+	status, info, err = mw.iunlink(mp, parentID, inode, fullPath)
 
 	if err != nil || status != statusOK {
 		return nil, nil
@@ -887,7 +955,7 @@ func (mw *MetaWrapper) txRename_ll(srcParentID uint64, srcName string, dstParent
 		funcs = append(funcs, func() (int, error) {
 			var newSt int
 			var newErr error
-			newSt, _, newErr = mw.txIunlink(tx, oldInodeMP, dstInode, dstFullPath)
+			newSt, _, newErr = mw.txIunlink(tx, oldInodeMP, dstParentID, dstInode, dstFullPath)
 			if newSt == statusNoent {
 				return statusOK, nil
 			}
@@ -1054,7 +1122,7 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 		return syscall.ENOENT
 	}
 
-	status, _, err = mw.ilink(srcMP, inode, srcFullPath)
+	status, _, err = mw.ilink(srcMP, dstParentID, inode, srcFullPath)
 	if err != nil || status != statusOK {
 		return statusToErrno(status)
 	}
@@ -1087,7 +1155,7 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 	}
 
 	if status != statusOK {
-		mw.iunlink(srcMP, inode, srcFullPath)
+		mw.iunlink(srcMP, dstParentID, inode, srcFullPath)
 		return statusToErrno(status)
 	}
 
@@ -1107,19 +1175,19 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 			sts, _, e = mw.dupdate(dstParentMP, dstParentID, dstName, oldInode, dstFullPath)
 		}
 		if e == nil && sts == statusOK {
-			mw.iunlink(srcMP, inode, srcFullPath)
+			mw.iunlink(srcMP, dstParentID, inode, srcFullPath)
 
 		}
 		return statusToErrno(status)
 	}
 
-	mw.iunlink(srcMP, inode, srcFullPath)
+	mw.iunlink(srcMP, dstParentID, inode, srcFullPath)
 
 	if oldInode != 0 {
 		// overwritten
 		inodeMP := mw.getPartitionByInode(oldInode)
 		if inodeMP != nil {
-			mw.iunlink(inodeMP, oldInode, dstFullPath)
+			mw.iunlink(inodeMP, dstParentID, oldInode, dstFullPath)
 			// evict oldInode to avoid oldInode becomes orphan inode
 			mw.ievict(inodeMP, oldInode, dstFullPath)
 		}
@@ -1394,7 +1462,7 @@ func (mw *MetaWrapper) txLink(parentID uint64, name string, ino uint64, fullPath
 	funcs = append(funcs, func() (int, error) {
 		var newSt int
 		var newErr error
-		newSt, info, newErr = mw.txIlink(tx, mp, ino, fullPath)
+		newSt, info, newErr = mw.txIlink(tx, mp, parentID, ino, fullPath)
 		return newSt, newErr
 	})
 
@@ -1472,7 +1540,7 @@ func (mw *MetaWrapper) link(parentID uint64, name string, ino uint64, fullPath s
 	}
 
 	// increase inode nlink
-	status, info, err = mw.ilink(mp, ino, fullPath)
+	status, info, err = mw.ilink(mp, parentID, ino, fullPath)
 	if err != nil || status != statusOK {
 		return nil, statusToErrno(status)
 	}
@@ -1495,7 +1563,7 @@ func (mw *MetaWrapper) link(parentID uint64, name string, ino uint64, fullPath s
 		return nil, statusToErrno(status)
 	} else if status != statusOK {
 		if status != statusExist {
-			mw.iunlink(mp, ino, fullPath)
+			mw.iunlink(mp, parentID, ino, fullPath)
 		}
 		return nil, statusToErrno(status)
 	}
@@ -1518,14 +1586,14 @@ func (mw *MetaWrapper) Evict(inode uint64, fullPath string) error {
 	return nil
 }
 
-func (mw *MetaWrapper) Setattr(inode uint64, valid, mode, uid, gid uint32, atime, mtime int64) error {
+func (mw *MetaWrapper) Setattr(inode uint64, valid, mode, uid, gid uint32, atime, mtime int64, length uint64) error {
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
 		log.LogErrorf("Setattr: No such partition, ino(%v)", inode)
 		return syscall.EINVAL
 	}
 
-	status, err := mw.setattr(mp, inode, valid, mode, uid, gid, atime, mtime)
+	status, err := mw.setattr(mp, inode, valid, mode, uid, gid, atime, mtime, length)
 	if err != nil || status != statusOK {
 		log.LogErrorf("Setattr: ino(%v) err(%v) status(%v)", inode, err, status)
 		return statusToErrno(status)
@@ -1565,7 +1633,7 @@ func (mw *MetaWrapper) InodeCreate_ll(parentID uint64, mode, uid, gid uint32, ta
 		for i := 0; i < length; i++ {
 			index := (int(epoch) + i) % length
 			mp = rwPartitions[index]
-			status, info, err = mw.quotaIcreate(mp, mode, uid, gid, target, quotaIds, fullPath)
+			status, info, err = mw.quotaIcreate(mp, parentID, mode, uid, gid, target, quotaIds, fullPath)
 			if err == nil && status == statusOK {
 				return info, nil
 			} else if status == statusNoSpace {
@@ -1577,7 +1645,7 @@ func (mw *MetaWrapper) InodeCreate_ll(parentID uint64, mode, uid, gid uint32, ta
 		for i := 0; i < length; i++ {
 			index := (int(epoch) + i) % length
 			mp = rwPartitions[index]
-			status, info, err = mw.icreate(mp, mode, uid, gid, target, fullPath)
+			status, info, err = mw.icreate(mp, parentID, mode, uid, gid, target, fullPath)
 			if err == nil && status == statusOK {
 				return info, nil
 			} else if status == statusNoSpace {
@@ -1590,13 +1658,13 @@ func (mw *MetaWrapper) InodeCreate_ll(parentID uint64, mode, uid, gid uint32, ta
 }
 
 // InodeUnlink_ll is a low-level api that makes specified inode link value +1.
-func (mw *MetaWrapper) InodeLink_ll(inode uint64, fullPath string) (*proto.InodeInfo, error) {
+func (mw *MetaWrapper) InodeLink_ll(parentIno, inode uint64, fullPath string) (*proto.InodeInfo, error) {
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
 		log.LogErrorf("InodeLink_ll: No such partition, ino(%v)", inode)
 		return nil, syscall.EINVAL
 	}
-	status, info, err := mw.ilink(mp, inode, fullPath)
+	status, info, err := mw.ilink(mp, parentIno, inode, fullPath)
 	if err != nil || status != statusOK {
 		log.LogErrorf("InodeLink_ll: ino(%v) err(%v) status(%v)", inode, err, status)
 		return nil, statusToErrno(status)
@@ -1611,7 +1679,7 @@ func (mw *MetaWrapper) InodeUnlink_ll(inode uint64, fullPath string) (*proto.Ino
 		log.LogErrorf("InodeUnlink_ll: No such partition, ino(%v)", inode)
 		return nil, syscall.EINVAL
 	}
-	status, info, err := mw.iunlink(mp, inode, fullPath)
+	status, info, err := mw.iunlink(mp, 0, inode, fullPath)
 	if err != nil || status != statusOK {
 		log.LogErrorf("InodeUnlink_ll: ino(%v) err(%v) status(%v)", inode, err, status)
 		return nil, statusToErrno(status)
@@ -1944,6 +2012,22 @@ func (mw *MetaWrapper) UpdateSummary_ll(parentIno uint64, filesInc int64, dirsIn
 			return
 		}
 	}
+	return
+}
+
+func (mw *MetaWrapper) XAttrAppend_ll(inode uint64, name, value [][]byte) (attrs map[string]string, err error) {
+	mp := mw.getPartitionByInode(inode)
+	if mp == nil {
+		log.LogErrorf("XAttrSet_ll: no such partition, inode(%v)", inode)
+		err = syscall.ENOENT
+		return
+	}
+	attrs, err = mw.appendXAttrs(mp, inode, name, value)
+	if err != nil {
+		return
+	}
+	log.LogDebugf("XAttrAppend_ll: volume(%v) inode(%v) name(%v) value(%v)",
+		mw.volname, inode, name, value)
 	return
 }
 

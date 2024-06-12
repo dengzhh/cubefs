@@ -154,6 +154,12 @@ const (
 	AdminDeleteMetaReplica             = "/metaReplica/delete"
 	AdminPutDataPartitions             = "/dataPartitions/set"
 
+	// Kv APIs for kv store
+	KvAdd    = "/kv/add"
+	KvGet    = "/kv/get"
+	KvDel    = "/kv/del"
+	KvUpdate = "/kv/update"
+
 	// Operation response
 	GetMetaNodeTaskResponse = "/metaNode/response" // Method: 'POST', ContentType: 'application/json'
 	GetDataNodeTaskResponse = "/dataNode/response" // Method: 'POST', ContentType: 'application/json'
@@ -298,6 +304,11 @@ var GApiInfo map[string]string = map[string]string{
 	"usertransfervol":                 UserTransferVol,
 	"userlist":                        UserList,
 	"usersofvol":                      UsersOfVol,
+
+	"kvadd":    KvDel,
+	"kvdel":    KvDel,
+	"kvget":    KvGet,
+	"kvupdate": KvUpdate,
 }
 
 //const TimeFormat = "2006-01-02 15:04:05"
@@ -652,6 +663,7 @@ type DataPartitionResponse struct {
 	Status        int8
 	ReplicaNum    uint8
 	Hosts         []string
+	Disks         []string
 	LeaderAddr    string
 	Epoch         uint64
 	IsRecover     bool

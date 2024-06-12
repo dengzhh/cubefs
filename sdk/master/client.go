@@ -56,6 +56,7 @@ type MasterClient struct {
 	clientAPI *ClientAPI
 	nodeAPI   *NodeAPI
 	userAPI   *UserAPI
+	kvAPI     *KvAPI
 }
 
 func (c *MasterClient) ReplaceMasterAddresses(addrs []string) {
@@ -94,6 +95,10 @@ func (c *MasterClient) NodeAPI() *NodeAPI {
 
 func (c *MasterClient) UserAPI() *UserAPI {
 	return c.userAPI
+}
+
+func (c *MasterClient) KvAPI() *KvAPI {
+	return c.kvAPI
 }
 
 // Change the leader address.
@@ -281,6 +286,7 @@ func NewMasterCLientWithResolver(masters []string, useSSL bool, updateInverval i
 	mc.clientAPI = &ClientAPI{mc: &mc.MasterClient}
 	mc.nodeAPI = &NodeAPI{mc: &mc.MasterClient}
 	mc.userAPI = &UserAPI{mc: &mc.MasterClient}
+	mc.kvAPI = &KvAPI{mc: &mc.MasterClient}
 	resolver, err := NewNameResolver(masters)
 	if err != nil {
 		return nil
@@ -361,6 +367,7 @@ func NewMasterClient(masters []string, useSSL bool) *MasterClient {
 	mc.clientAPI = &ClientAPI{mc: mc}
 	mc.nodeAPI = &NodeAPI{mc: mc}
 	mc.userAPI = &UserAPI{mc: mc}
+	mc.kvAPI = &KvAPI{mc: mc}
 	return mc
 }
 

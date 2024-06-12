@@ -16,6 +16,8 @@ package metanode
 
 import (
 	"encoding/json"
+	"fmt"
+	"github.com/cubefs/cubefs/util/log"
 	"strconv"
 	"strings"
 
@@ -71,6 +73,59 @@ func (mp *metaPartition) UpdateXAttr(req *proto.UpdateXAttrRequest, p *Packet) (
 		p.PacketOkReply()
 		return
 	}
+}
+
+func (mp *metaPartition) AppendXAttr(req *proto.AppendXAttrRequest, p *Packet) (err error) {
+	var response = &proto.AppendXAttrResponse{
+		VolName:     req.VolName,
+		PartitionId: req.PartitionId,
+		Inode:       req.Inode,
+		Attrs:       make(map[string]string),
+	}
+	mp.xattrLock.Lock()
+	defer mp.xattrLock.Unlock()
+	treeItem := mp.extendTree.Get(NewExtend(req.Inode))
+	if treeItem != nil {
+		extend := treeItem.(*Extend)
+		for i, _ := range req.Keys {
+			if value, exist := extend.Get(req.Keys[i]); exist {
+				newValue := append(value, req.Values[i]...)
+				extend.Put(req.Keys[i], newValue)
+				response.Attrs[string(req.Keys[i])] = string(newValue)
+				if _, err = mp.putExtend(opFSMUpdateXAttr, extend); err != nil {
+					p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+					return
+				}
+
+			} else {
+				extend.Put(req.Keys[i], req.Values[i])
+				response.Attrs[string(req.Keys[i])] = string(req.Values[i])
+				if _, err = mp.putExtend(opFSMUpdateXAttr, extend); err != nil {
+					p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+					return
+				}
+			}
+
+		}
+	} else {
+		var extend = NewExtend(req.Inode)
+		for i, _ := range req.Keys {
+			extend.Put(req.Keys[i], req.Values[i])
+			response.Attrs[string(req.Keys[i])] = string(req.Values[i])
+			if _, err = mp.putExtend(opFSMUpdateXAttr, extend); err != nil {
+				p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+				return
+			}
+		}
+	}
+	var encoded []byte
+	encoded, err = json.Marshal(response)
+	if err != nil {
+		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
+		return
+	}
+	p.PacketOkWithBody(encoded)
+	return
 }
 
 func (mp *metaPartition) SetXAttr(req *proto.SetXAttrRequest, p *Packet) (err error) {
@@ -219,5 +274,57 @@ func (mp *metaPartition) putExtend(op uint32, extend *Extend) (resp interface{},
 		return
 	}
 	resp, err = mp.submit(op, marshaled)
+	return
+}
+
+func (mp *metaPartition) addExtendParentIno(inode, parentIno uint64) {
+	var extend = NewExtend(inode)
+	var data map[uint64]int
+	var e *Extend
+
+	if parentIno == 0 {
+		log.LogWarnf("addExtendParentIno Inode [%v] Parent [%v].", inode, parentIno)
+		return
+	}
+
+	treeItem := mp.extendTree.CopyGet(extend)
+	if treeItem == nil {
+		mp.extendTree.ReplaceOrInsert(extend, true)
+	} else {
+		e = treeItem.(*Extend)
+		e.mu.Lock()
+		defer e.mu.Unlock()
+		json.Unmarshal(e.dataMap[proto.ParentKey], &data)
+		data[parentIno] += 1
+		e.dataMap[proto.ParentKey], _ = json.Marshal(data)
+	}
+
+	log.LogInfof("AddParentIno Inode [%v] Parent [%v] success.", inode, parentIno)
+	return
+}
+
+func (mp *metaPartition) delExtendParentIno(inode, parentIno uint64) (err error) {
+	var data map[uint64]int
+	if parentIno == 0 {
+		log.LogWarnf("delExtendParentIno Inode [%v] Parent [%v].", inode, parentIno)
+		return nil
+	}
+	treeItem := mp.extendTree.CopyGet(NewExtend(inode))
+	if treeItem == nil {
+		return fmt.Errorf("inode [%v] extend not found", inode)
+	}
+	e := treeItem.(*Extend)
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	err = json.Unmarshal(e.dataMap[proto.ParentKey], &data)
+	if err != nil {
+		return
+	}
+	if data[parentIno] > 1 {
+		data[parentIno] -= 1
+	} else {
+		delete(data, parentIno)
+	}
+	e.dataMap["parent"], err = json.Marshal(data)
 	return
 }
