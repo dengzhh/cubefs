@@ -104,11 +104,11 @@ func (m *Server) getKeyParam(w http.ResponseWriter, r *http.Request) {
 	vfilter := r.FormValue("vfilter")
 
 	if strings.HasSuffix(key, "*") {
-		key := []byte(kvPrefix + key)
+		dbkey := []byte(kvPrefix + key)
 		if kfilter != "" || vfilter != "" {
-			dbResult, err = m.fsm.store.SeekForPrefixAndFilter(key[:len(key)-1], kfilter, vfilter)
+			dbResult, err = m.fsm.store.SeekForPrefixAndFilter(dbkey[:len(dbkey)-1], kfilter, vfilter)
 		} else {
-			dbResult, err = m.fsm.store.SeekForPrefix(key[:len(key)-1])
+			dbResult, err = m.fsm.store.SeekForPrefix(dbkey[:len(dbkey)-1])
 		}
 
 		if err != nil {
@@ -116,9 +116,12 @@ func (m *Server) getKeyParam(w http.ResponseWriter, r *http.Request) {
 			sendErrReply(w, r, newErrHTTPReply(proto.ErrInternalError))
 			return
 		}
+
 		for k, v := range dbResult {
 			result[k[len(kvPrefix):]] = string(v)
 		}
+
+		log.LogInfof("action[getKeyParam],key: %v, kfilter: %v, vfilter: %v, result:%v", string(key), kfilter, vfilter, result)
 		sendOkReply(w, r, newSuccessHTTPReply(result))
 		return
 	}

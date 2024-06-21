@@ -20,6 +20,7 @@ import (
 
 	"os"
 
+	"github.com/cubefs/cubefs/util/log"
 	"github.com/tecbot/gorocksdb"
 )
 
@@ -211,6 +212,7 @@ func (rs *RocksDBStore) SeekForPrefixAndFilter(prefix []byte, kfilter string, vf
 	for ; it.ValidForPrefix(prefix); it.Next() {
 		key := it.Key().Data()
 		if len(kfilter) > 2 {
+			log.LogInfof("key:%v,kfilter:%v", string(key[len(prefix):]), kfilter)
 			switch kfilter[:2] {
 			case "ge":
 				if !(string(key[len(prefix):]) >= kfilter[2:]) {
@@ -238,6 +240,7 @@ func (rs *RocksDBStore) SeekForPrefixAndFilter(prefix []byte, kfilter string, vf
 		}
 		value := it.Value().Data()
 		if len(vfilter) > 2 {
+			log.LogInfof("key:%v,kfilter:%v", string(value), kfilter)
 			switch vfilter[:2] {
 			case "ge":
 				if !(string(value) >= vfilter[2:]) {

@@ -84,7 +84,7 @@ func (s *xattrStore) Get(vol, path, key string) (val []byte, err error) {
 	}
 
 	var strVal string
-	strVal = xattrInfo.XAttrs[key]
+	strVal = string(xattrInfo.XAttrs[key])
 	if len(strVal) > 0 {
 		val = []byte(strVal)
 		return

@@ -80,7 +80,7 @@ func (mp *metaPartition) AppendXAttr(req *proto.AppendXAttrRequest, p *Packet) (
 		VolName:     req.VolName,
 		PartitionId: req.PartitionId,
 		Inode:       req.Inode,
-		Attrs:       make(map[string]string),
+		Attrs:       make(map[string][]byte),
 	}
 	mp.xattrLock.Lock()
 	defer mp.xattrLock.Unlock()
@@ -91,7 +91,8 @@ func (mp *metaPartition) AppendXAttr(req *proto.AppendXAttrRequest, p *Packet) (
 			if value, exist := extend.Get(req.Keys[i]); exist {
 				newValue := append(value, req.Values[i]...)
 				extend.Put(req.Keys[i], newValue)
-				response.Attrs[string(req.Keys[i])] = string(newValue)
+				response.Attrs[string(req.Keys[i])] = newValue
+				log.LogInfof("AppendXAttr inode:%v,key:%v,value:%d/%v", req.Inode, string(req.Keys[i]), len(newValue), newValue)
 				if _, err = mp.putExtend(opFSMUpdateXAttr, extend); err != nil {
 					p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 					return
@@ -99,7 +100,8 @@ func (mp *metaPartition) AppendXAttr(req *proto.AppendXAttrRequest, p *Packet) (
 
 			} else {
 				extend.Put(req.Keys[i], req.Values[i])
-				response.Attrs[string(req.Keys[i])] = string(req.Values[i])
+				response.Attrs[string(req.Keys[i])] = req.Values[i]
+				log.LogInfof("AppendXAttr inode:%v,key:%v,value:%d/%v", req.Inode, string(req.Keys[i]), len(req.Values[i]), req.Values[i])
 				if _, err = mp.putExtend(opFSMUpdateXAttr, extend); err != nil {
 					p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 					return
@@ -111,7 +113,8 @@ func (mp *metaPartition) AppendXAttr(req *proto.AppendXAttrRequest, p *Packet) (
 		var extend = NewExtend(req.Inode)
 		for i, _ := range req.Keys {
 			extend.Put(req.Keys[i], req.Values[i])
-			response.Attrs[string(req.Keys[i])] = string(req.Values[i])
+			response.Attrs[string(req.Keys[i])] = req.Values[i]
+			log.LogInfof("AppendXAttr inode:%v,key:%v,value:%d/%v", req.Inode, string(req.Keys[i]), len(req.Values[i]), req.Values[i])
 			if _, err = mp.putExtend(opFSMUpdateXAttr, extend); err != nil {
 				p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 				return
@@ -130,7 +133,7 @@ func (mp *metaPartition) AppendXAttr(req *proto.AppendXAttrRequest, p *Packet) (
 
 func (mp *metaPartition) SetXAttr(req *proto.SetXAttrRequest, p *Packet) (err error) {
 	var extend = NewExtend(req.Inode)
-	extend.Put([]byte(req.Key), []byte(req.Value))
+	extend.Put([]byte(req.Key), req.Value)
 	if _, err = mp.putExtend(opFSMSetXAttr, extend); err != nil {
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
@@ -142,7 +145,7 @@ func (mp *metaPartition) SetXAttr(req *proto.SetXAttrRequest, p *Packet) (err er
 func (mp *metaPartition) BatchSetXAttr(req *proto.BatchSetXAttrRequest, p *Packet) (err error) {
 	var extend = NewExtend(req.Inode)
 	for key, val := range req.Attrs {
-		extend.Put([]byte(key), []byte(val))
+		extend.Put([]byte(key), val)
 	}
 
 	if _, err = mp.putExtend(opFSMSetXAttr, extend); err != nil {
@@ -164,7 +167,8 @@ func (mp *metaPartition) GetXAttr(req *proto.GetXAttrRequest, p *Packet) (err er
 	if treeItem != nil {
 		extend := treeItem.(*Extend)
 		if value, exist := extend.Get([]byte(req.Key)); exist {
-			response.Value = string(value)
+			response.Value = value
+			log.LogInfof("GetXAttr inode:%v,key:%v,value:%d/%v", req.Inode, req.Key, len(value), value)
 		}
 	}
 	var encoded []byte
@@ -182,13 +186,14 @@ func (mp *metaPartition) GetAllXAttr(req *proto.GetAllXAttrRequest, p *Packet) (
 		VolName:     req.VolName,
 		PartitionId: req.PartitionId,
 		Inode:       req.Inode,
-		Attrs:       make(map[string]string),
+		Attrs:       make(map[string][]byte),
 	}
 	treeItem := mp.extendTree.Get(NewExtend(req.Inode))
 	if treeItem != nil {
 		extend := treeItem.(*Extend)
 		for key, val := range extend.dataMap {
-			response.Attrs[key] = string(val)
+			response.Attrs[key] = val
+			log.LogInfof("GetAllXAttr inode:%v,key:%v,value:%d/%v", req.Inode, key, len(val), val)
 		}
 	}
 	var encoded []byte
@@ -197,6 +202,7 @@ func (mp *metaPartition) GetAllXAttr(req *proto.GetAllXAttrRequest, p *Packet) (
 		p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))
 		return
 	}
+
 	p.PacketOkWithBody(encoded)
 	return
 }
@@ -213,11 +219,11 @@ func (mp *metaPartition) BatchGetXAttr(req *proto.BatchGetXAttrRequest, p *Packe
 			extend := treeItem.(*Extend)
 			info := &proto.XAttrInfo{
 				Inode:  inode,
-				XAttrs: make(map[string]string),
+				XAttrs: make(map[string][]byte),
 			}
 			for _, key := range req.Keys {
 				if val, exist := extend.Get([]byte(key)); exist {
-					info.XAttrs[key] = string(val)
+					info.XAttrs[key] = val
 				}
 			}
 			response.XAttrs = append(response.XAttrs, info)
@@ -289,29 +295,40 @@ func (mp *metaPartition) addExtendParentIno(inode, parentIno uint64) {
 
 	treeItem := mp.extendTree.CopyGet(extend)
 	if treeItem == nil {
+		data = make(map[uint64]int)
+		data[parentIno] = 1
+		extend.dataMap[proto.ParentKey], _ = json.Marshal(data)
 		mp.extendTree.ReplaceOrInsert(extend, true)
 	} else {
 		e = treeItem.(*Extend)
 		e.mu.Lock()
 		defer e.mu.Unlock()
-		json.Unmarshal(e.dataMap[proto.ParentKey], &data)
-		data[parentIno] += 1
-		e.dataMap[proto.ParentKey], _ = json.Marshal(data)
+		if e.dataMap[proto.ParentKey] == nil {
+			data = make(map[uint64]int)
+			data[parentIno] = 1
+			e.dataMap[proto.ParentKey], _ = json.Marshal(data)
+		} else {
+			json.Unmarshal(e.dataMap[proto.ParentKey], &data)
+			data[parentIno] += 1
+			e.dataMap[proto.ParentKey], _ = json.Marshal(data)
+		}
+
 	}
 
-	log.LogInfof("AddParentIno Inode [%v] Parent [%v] success.", inode, parentIno)
+	log.LogInfof("addExtendParentIno Inode [%v] Parent [%v] success.", inode, parentIno)
 	return
 }
 
-func (mp *metaPartition) delExtendParentIno(inode, parentIno uint64) (err error) {
+func (mp *metaPartition) delExtendParentIno(inode, parentIno uint64) (parentLeft uint64, err error) {
 	var data map[uint64]int
 	if parentIno == 0 {
 		log.LogWarnf("delExtendParentIno Inode [%v] Parent [%v].", inode, parentIno)
-		return nil
+		return 0, fmt.Errorf("delExtendParentIno Inode [%v] Parent [%v].", inode, parentIno)
 	}
 	treeItem := mp.extendTree.CopyGet(NewExtend(inode))
 	if treeItem == nil {
-		return fmt.Errorf("inode [%v] extend not found", inode)
+		log.LogWarnf("delExtendParentIno Inode [%v] Parent [%v] not found.", inode, parentIno)
+		return 0, fmt.Errorf("inode [%v] extend not found", inode)
 	}
 	e := treeItem.(*Extend)
 	e.mu.Lock()
@@ -325,6 +342,12 @@ func (mp *metaPartition) delExtendParentIno(inode, parentIno uint64) (err error)
 	} else {
 		delete(data, parentIno)
 	}
-	e.dataMap["parent"], err = json.Marshal(data)
+	e.dataMap[proto.ParentKey], err = json.Marshal(data)
+	if len(data) == 1 {
+		for parentLeft, _ = range data {
+			break
+		}
+	}
+	log.LogInfof("delExtendParentIno Inode [%v] Parent [%v] success.", inode, parentIno)
 	return
 }

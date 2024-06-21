@@ -1378,6 +1378,7 @@ func (tr *TransactionResource) rollbackInodeInternal(rbInode *TxRollbackInode) (
 		} else {
 			ino.IncNLink()
 			mp.addExtendParentIno(rbInode.inode.Inode, rbInode.inode.ParentIno)
+			ino.UpdateParentIno(rbInode.inode.ParentIno)
 		}
 
 	case TxDelete:

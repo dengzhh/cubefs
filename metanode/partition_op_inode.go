@@ -21,6 +21,8 @@ import (
 	"github.com/cubefs/cubefs/sdk/meta"
 	"os"
 	"time"
+	"strings"
+	"strconv"
 
 	"github.com/cubefs/cubefs/proto"
 	"github.com/cubefs/cubefs/util/auditlog"
@@ -589,12 +591,18 @@ func (mp *metaPartition) CreateInodeLink(req *LinkInodeReq, p *Packet, remoteAdd
 	}
 	var r interface{}
 	var val []byte
+
 	if req.UniqID > 0 {
 		val = InodeOnceLinkMarshal(req)
 		r, err = mp.submit(opFSMCreateLinkInodeOnce, val)
 	} else {
 		ino := NewInode(req.Inode, 0)
 		ino.ParentIno = req.ParentIno
+		if strings.HasPrefix(req.FullPaths[0], "unlink") {
+			ino.SrcParentIno, err = strconv.ParseUint(req.FullPaths[0][5:], 10, 64); if err != nil {
+				log.LogWarnf("parse unlink src parent inode failed, err[%v]", err)
+			}
+		}
 		val, err = ino.Marshal()
 		if err != nil {
 			p.PacketErrorWithBody(proto.OpErr, []byte(err.Error()))

@@ -86,7 +86,7 @@ func (mw *MetaWrapper) getPartitionByInode(ino uint64) *MetaPartition {
 	defer mw.RUnlock()
 
 	if ino >= TrashInode { // For JuiceceFS trash directory
-		ino = ino - TrashInode + 1
+		ino = ino - TrashInode
 	}
 
 	pivot := &MetaPartition{Start: ino}

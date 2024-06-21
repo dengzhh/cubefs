@@ -1047,12 +1047,12 @@ func (trash *Trash) recoverPosixPathName(fileName string, fileIno uint64) string
 				return strings.Split(fileName, ParentDirPrefix)[0]
 			}
 			newFileName := attrInfo.XAttrs[OriginalName]
-			if newFileName == "" {
+			if string(newFileName) == "" {
 				log.LogWarnf("action[recoverPosixPathName]:XAttrGet_ll get empty name for %v", fileName)
 				fileName = strings.ReplaceAll(fileName, LongNamePrefix, "/")
 				fileName = strings.Split(fileName, ParentDirPrefix)[0]
 			} else {
-				fileName = newFileName
+				fileName = string(newFileName)
 			}
 			log.LogDebugf("action[recoverPosixPathName] fileName %v is read from xattr ", fileName)
 		}

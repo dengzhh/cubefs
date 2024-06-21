@@ -1985,7 +1985,7 @@ func (mw *MetaWrapper) appendObjExtentKeys(mp *MetaPartition, inode uint64, exte
 	return
 }
 
-func (mw *MetaWrapper) batchSetXAttr(mp *MetaPartition, inode uint64, attrs map[string]string) (status int, err error) {
+func (mw *MetaWrapper) batchSetXAttr(mp *MetaPartition, inode uint64, attrs map[string][]byte) (status int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("batchSetXAttr", err, bgTime, 1)
@@ -1995,7 +1995,7 @@ func (mw *MetaWrapper) batchSetXAttr(mp *MetaPartition, inode uint64, attrs map[
 		VolName:     mw.volname,
 		PartitionId: mp.PartitionID,
 		Inode:       inode,
-		Attrs:       make(map[string]string),
+		Attrs:       make(map[string][]byte),
 	}
 
 	for key, val := range attrs {
@@ -2046,7 +2046,7 @@ func (mw *MetaWrapper) setXAttr(mp *MetaPartition, inode uint64, name []byte, va
 		PartitionId: mp.PartitionID,
 		Inode:       inode,
 		Key:         string(name),
-		Value:       string(value),
+		Value:       value,
 	}
 
 	packet := proto.NewPacketReqID()
@@ -2082,7 +2082,7 @@ func (mw *MetaWrapper) setXAttr(mp *MetaPartition, inode uint64, name []byte, va
 	return
 }
 
-func (mw *MetaWrapper) getAllXAttr(mp *MetaPartition, inode uint64) (attrs map[string]string, status int, err error) {
+func (mw *MetaWrapper) getAllXAttr(mp *MetaPartition, inode uint64) (attrs map[string][]byte, status int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("getAllXAttr", err, bgTime, 1)
@@ -2133,7 +2133,7 @@ func (mw *MetaWrapper) getAllXAttr(mp *MetaPartition, inode uint64) (attrs map[s
 	return
 }
 
-func (mw *MetaWrapper) getXAttr(mp *MetaPartition, inode uint64, name string) (value string, status int, err error) {
+func (mw *MetaWrapper) getXAttr(mp *MetaPartition, inode uint64, name string) (value []byte, status int, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("getXAttr", err, bgTime, 1)
@@ -2482,7 +2482,7 @@ func (mw *MetaWrapper) updateXAttrs(mp *MetaPartition, inode uint64, filesInc in
 	return nil
 }
 
-func (mw *MetaWrapper) appendXAttrs(mp *MetaPartition, inode uint64, keys, values [][]byte) (attrs map[string]string, err error) {
+func (mw *MetaWrapper) appendXAttrs(mp *MetaPartition, inode uint64, keys, values [][]byte) (attrs map[string][]byte, err error) {
 	bgTime := stat.BeginStat()
 	defer func() {
 		stat.EndStat("appendXAttrs", err, bgTime, 1)

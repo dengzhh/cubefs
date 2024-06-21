@@ -127,11 +127,11 @@ func (info *InodeInfo) String() string {
 
 type XAttrInfo struct {
 	Inode  uint64
-	XAttrs map[string]string
+	XAttrs map[string][]byte
 }
 
 func (info XAttrInfo) Get(key string) []byte {
-	return []byte(info.XAttrs[key])
+	return info.XAttrs[key]
 }
 
 func (info XAttrInfo) VisitAll(visitor func(key string, value []byte) bool) {
@@ -728,14 +728,14 @@ type SetXAttrRequest struct {
 	PartitionId uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
 	Key         string `json:"key"`
-	Value       string `json:"val"`
+	Value       []byte `json:"val"`
 }
 
 type BatchSetXAttrRequest struct {
 	VolName     string            `json:"vol"`
 	PartitionId uint64            `json:"pid"`
 	Inode       uint64            `json:"ino"`
-	Attrs       map[string]string `json:"attrs"`
+	Attrs       map[string][]byte `json:"attrs"`
 }
 
 type GetAllXAttrRequest struct {
@@ -748,7 +748,7 @@ type GetAllXAttrResponse struct {
 	VolName     string            `json:"vol"`
 	PartitionId uint64            `json:"pid"`
 	Inode       uint64            `json:"ino"`
-	Attrs       map[string]string `json:"attrs"`
+	Attrs       map[string][]byte `json:"attrs"`
 }
 
 type GetXAttrRequest struct {
@@ -763,7 +763,7 @@ type GetXAttrResponse struct {
 	PartitionId uint64 `json:"pid"`
 	Inode       uint64 `json:"ino"`
 	Key         string `json:"key"`
-	Value       string `json:"val"`
+	Value       []byte `json:"val"`
 }
 
 type RemoveXAttrRequest struct {
@@ -819,7 +819,7 @@ type AppendXAttrResponse struct {
 	VolName     string            `json:"vol"`
 	PartitionId uint64            `json:"pid"`
 	Inode       uint64            `json:"ino"`
-	Attrs       map[string]string `json:"attrs"`
+	Attrs       map[string][]byte `json:"attrs"`
 }
 
 type MultipartInfo struct {

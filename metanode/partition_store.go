@@ -19,6 +19,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"github.com/cubefs/cubefs/sdk/meta"
 	"hash/crc32"
 	"io"
 	"io/ioutil"
@@ -166,7 +167,7 @@ func (mp *metaPartition) loadInode(rootDir string, crc uint32) (err error) {
 
 		mp.fsmCreateInode(ino)
 		mp.checkAndInsertFreeList(ino)
-		if mp.config.Cursor < ino.Inode {
+		if mp.config.Cursor < ino.Inode && ino.Inode < meta.TrashInode {
 			mp.config.Cursor = ino.Inode
 		}
 		numInodes += 1

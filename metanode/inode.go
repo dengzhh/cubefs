@@ -75,6 +75,7 @@ type Inode struct {
 	Flag       int32
 	Reserved   uint64 // reserved space
 	ParentIno  uint64
+	SrcParentIno uint64
 	//Extents    *ExtentsTree
 	Extents    *SortedExtents
 	ObjExtents *SortedObjExtents
@@ -229,6 +230,7 @@ func (i *Inode) Copy() BtreeItem {
 	newIno.Reserved = i.Reserved
 	newIno.Extents = i.Extents.Clone()
 	newIno.ObjExtents = i.ObjExtents.Clone()
+	newIno.ParentIno = i.ParentIno
 	i.RUnlock()
 	return newIno
 }
@@ -409,6 +411,9 @@ func (i *Inode) MarshalValue() (val []byte) {
 	if err = binary.Write(buff, binary.BigEndian, &i.ParentIno); err != nil {
 		panic(err)
 	}
+	if err = binary.Write(buff, binary.BigEndian, &i.SrcParentIno); err != nil {
+		panic(err)
+	}
 
 	if i.Reserved == InodeV2Flag {
 		// marshal ExtentsKey
@@ -498,6 +503,9 @@ func (i *Inode) UnmarshalValue(val []byte) (err error) {
 		return
 	}
 	if err = binary.Read(buff, binary.BigEndian, &i.ParentIno); err != nil {
+		return
+	}
+	if err = binary.Read(buff, binary.BigEndian, &i.SrcParentIno); err != nil {
 		return
 	}
 	if buff.Len() == 0 {
@@ -631,6 +639,19 @@ func (i *Inode) ExtentsTruncate(length uint64, ct int64, doOnLastKey func(*proto
 func (i *Inode) IncNLink() {
 	i.Lock()
 	i.NLink++
+	i.Unlock()
+}
+
+func (i *Inode) UpdateParentIno(pino uint64) { // For JuiceFS to trace hard-links
+	i.Lock()
+	if !proto.IsRegular(i.Type) {
+		return
+	}
+	if i.NLink > 1 {
+		i.ParentIno = 0
+	} else {
+		i.ParentIno = pino
+	}
 	i.Unlock()
 }
 

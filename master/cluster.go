@@ -173,7 +173,7 @@ func (mgr *followerReadManager) sendFollowerVolumeDpView() {
 	vols := mgr.c.copyVols()
 	for _, vol := range vols {
 		log.LogDebugf("followerReadManager.getVolumeDpView %v", vol.Name)
-		if vol.Status == markDelete {
+		if vol.Status == markDelete || vol.Capacity == 0 {
 			continue
 		}
 		var body []byte
@@ -517,6 +517,9 @@ func (c *Cluster) checkDataPartitions() {
 	for _, vol := range vols {
 		readWrites := vol.checkDataPartitions(c)
 		vol.dataPartitions.setReadWriteDataPartitions(readWrites, c.Name)
+		if vol.Capacity == 0 {
+			continue
+		}
 		if c.metaReady {
 			vol.dataPartitions.updateResponseCache(true, 0, vol.VolType)
 		}
@@ -2795,7 +2798,7 @@ func (c *Cluster) updateVol(name, authKey string, newArgs *VolVarargs) (err erro
 		goto errHandler
 	}
 
-	if newArgs.coldArgs.cacheCap >= newArgs.capacity {
+	if (vol.Capacity > 0) && (newArgs.coldArgs.cacheCap >= newArgs.capacity) {
 		err = fmt.Errorf("capacity must be large than cache capacity, newCap(%d), newCacheCap(%d)", newArgs.capacity, newArgs.coldArgs.cacheCap)
 		goto errHandler
 	}

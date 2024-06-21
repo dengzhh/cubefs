@@ -18,6 +18,8 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"sync/atomic"
+	"strings"
+	"strconv"
 
 	"github.com/cubefs/cubefs/proto"
 )
@@ -84,18 +86,21 @@ func (mp *metaPartition) uniqCheckerEvict() (left int, evict int, err error) {
 	return left, idx + 1, err
 }
 
-var inodeOnceSize = 16
+var inodeOnceSize = 32
 
 type InodeOnce struct {
 	UniqID    uint64
 	Inode     uint64 // Inode ID
 	ParentIno uint64
+	SrcParentIno uint64 // for unlink to trash operation, update the inode's parent info
 }
 
 func (i *InodeOnce) Marshal() (val []byte) {
 	val = make([]byte, inodeOnceSize)
 	binary.BigEndian.PutUint64(val[0:8], i.UniqID)
 	binary.BigEndian.PutUint64(val[8:16], i.Inode)
+	binary.BigEndian.PutUint64(val[16:24], i.ParentIno)
+	binary.BigEndian.PutUint64(val[24:32], i.SrcParentIno)
 	return val
 }
 
@@ -114,6 +119,9 @@ func InodeOnceLinkMarshal(req *LinkInodeReq) []byte {
 		Inode:     req.Inode,
 		ParentIno: req.ParentIno,
 	}
+	if strings.HasPrefix(req.FullPaths[0], "unlink") {
+		inoOnce.SrcParentIno, _ = strconv.ParseUint(req.FullPaths[0][5:], 10, 64)
+	}
 	return inoOnce.Marshal()
 }
 
@@ -125,5 +133,6 @@ func InodeOnceUnmarshal(val []byte) *InodeOnce {
 	i.UniqID = binary.BigEndian.Uint64(val[0:8])
 	i.Inode = binary.BigEndian.Uint64(val[8:16])
 	i.ParentIno = binary.BigEndian.Uint64(val[16:24])
+	i.SrcParentIno = binary.BigEndian.Uint64(val[24:32])
 	return i
 }

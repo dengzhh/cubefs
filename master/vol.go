@@ -350,7 +350,7 @@ func (vol *Vol) initDataPartitions(c *Cluster) (err error) {
 }
 
 func (vol *Vol) checkDataPartitions(c *Cluster) (cnt int) {
-	if vol.getDataPartitionsCount() == 0 && vol.Status != markDelete && proto.IsHot(vol.VolType) {
+	if vol.getDataPartitionsCount() == 0 && vol.Status != markDelete && proto.IsHot(vol.VolType) && (vol.Capacity > 0) {
 		c.batchCreateDataPartition(vol, 1, false)
 	}
 

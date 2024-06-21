@@ -171,8 +171,16 @@ func (mw *MetaWrapper) txCreate_ll(parentID uint64, name string, mode, uid, gid 
 
 	epoch := atomic.AddUint64(&mw.epoch, 1)
 	for i := 0; i < length; i++ {
-		index := (int(epoch) + i) % length
-		mp = rwPartitions[index]
+		if parentID == proto.RootIno && len(fullPath) > 0 && fullPath == TrashName {
+			mp = mw.getPartitionByInode(0)
+			if mp == nil {
+				log.LogErrorf("txCreate_ll: No partition, inode(%v)", parentID)
+				return nil, syscall.ENOENT
+			}
+		} else {
+			index := (int(epoch) + i) % length
+			mp = rwPartitions[index]
+		}
 		tx, err = NewCreateTransaction(parentMP, mp, parentID, name, mw.TxTimeout, txType)
 		if err != nil {
 			return nil, syscall.EAGAIN
@@ -266,8 +274,16 @@ func (mw *MetaWrapper) create_ll(parentID uint64, name string, mode, uid, gid ui
 		}
 
 		for i := 0; i < length; i++ {
-			index := (int(epoch) + i) % length
-			mp = rwPartitions[index]
+			if parentID == proto.RootIno && len(fullPath) > 0 && fullPath == TrashName {
+				mp = mw.getPartitionByInode(0)
+				if mp == nil {
+					log.LogErrorf("Create_ll: No partition, inode(%v)", parentID)
+					return nil, syscall.ENOENT
+				}
+			} else {
+				index := (int(epoch) + i) % length
+				mp = rwPartitions[index]
+			}
 			status, info, err = mw.quotaIcreate(mp, parentID, mode, uid, gid, target, quotaIds, fullPath)
 			if err == nil && status == statusOK {
 				goto create_dentry
@@ -277,9 +293,18 @@ func (mw *MetaWrapper) create_ll(parentID uint64, name string, mode, uid, gid ui
 			}
 		}
 	} else {
+
 		for i := 0; i < length; i++ {
-			index := (int(epoch) + i) % length
-			mp = rwPartitions[index]
+			if parentID == proto.RootIno && len(fullPath) > 0 && fullPath == TrashName {
+				mp = mw.getPartitionByInode(0)
+				if mp == nil {
+					log.LogErrorf("Create_ll: No partition, inode(%v)", parentID)
+					return nil, syscall.ENOENT
+				}
+			} else {
+				index := (int(epoch) + i) % length
+				mp = rwPartitions[index]
+			}
 			status, info, err = mw.icreate(mp, parentID, mode, uid, gid, target, fullPath)
 			if err == nil && status == statusOK {
 				goto create_dentry
@@ -1130,6 +1155,9 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 	// create dentry in dst parent
 	status, err = mw.dcreate(dstParentMP, dstParentID, dstName, inode, mode, dstFullPath, false)
 	if err != nil {
+		/* TODO: for rename to trash: need to rollback the parent info
+		mw.ilink(srcMP, dstParentID, inode, strings.Replace(srcFullPath, "unlink", "link", 1))
+		*/
 		if status == statusOpDirQuota {
 			return statusToErrno(status)
 		}
@@ -1155,7 +1183,7 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 	}
 
 	if status != statusOK {
-		mw.iunlink(srcMP, dstParentID, inode, srcFullPath)
+		mw.iunlink(srcMP, dstParentID, inode, strings.Replace(srcFullPath, "unlink", "link", 1))
 		return statusToErrno(status)
 	}
 
@@ -1181,7 +1209,7 @@ func (mw *MetaWrapper) rename_ll(srcParentID uint64, srcName string, dstParentID
 		return statusToErrno(status)
 	}
 
-	mw.iunlink(srcMP, dstParentID, inode, srcFullPath)
+	mw.iunlink(srcMP, srcParentID, inode, srcFullPath)
 
 	if oldInode != 0 {
 		// overwritten
@@ -1901,7 +1929,7 @@ func (mw *MetaWrapper) XAttrSet_ll(inode uint64, name, value []byte) error {
 	return nil
 }
 
-func (mw *MetaWrapper) BatchSetXAttr_ll(inode uint64, attrs map[string]string) error {
+func (mw *MetaWrapper) BatchSetXAttr_ll(inode uint64, attrs map[string][]byte) error {
 	var err error
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
@@ -1952,8 +1980,8 @@ func (mw *MetaWrapper) XAttrGet_ll(inode uint64, name string) (*proto.XAttrInfo,
 		return nil, statusToErrno(status)
 	}
 
-	xAttrValues := make(map[string]string)
-	xAttrValues[name] = string(value)
+	xAttrValues := make(map[string][]byte)
+	xAttrValues[name] = value
 
 	xAttr := &proto.XAttrInfo{
 		Inode:  inode,
@@ -2015,7 +2043,7 @@ func (mw *MetaWrapper) UpdateSummary_ll(parentIno uint64, filesInc int64, dirsIn
 	return
 }
 
-func (mw *MetaWrapper) XAttrAppend_ll(inode uint64, name, value [][]byte) (attrs map[string]string, err error) {
+func (mw *MetaWrapper) XAttrAppend_ll(inode uint64, name, value [][]byte) (attrs map[string][]byte, err error) {
 	mp := mw.getPartitionByInode(inode)
 	if mp == nil {
 		log.LogErrorf("XAttrSet_ll: no such partition, inode(%v)", inode)
@@ -2142,8 +2170,8 @@ func (mw *MetaWrapper) getDirSummary(summaryInfo *SummaryInfo, inodeCh <-chan ui
 		inodes = inodes[0:0]
 		keys = keys[0:0]
 		for _, xattrInfo := range xattrInfos {
-			if xattrInfo.XAttrs[SummaryKey] != "" {
-				summaryList := strings.Split(xattrInfo.XAttrs[SummaryKey], ",")
+			if string(xattrInfo.XAttrs[SummaryKey]) != "" {
+				summaryList := strings.Split(string(xattrInfo.XAttrs[SummaryKey]), ",")
 				files, _ := strconv.ParseInt(summaryList[0], 10, 64)
 				subdirs, _ := strconv.ParseInt(summaryList[1], 10, 64)
 				fbytes, _ := strconv.ParseInt(summaryList[2], 10, 64)
@@ -2159,8 +2187,8 @@ func (mw *MetaWrapper) getDirSummary(summaryInfo *SummaryInfo, inodeCh <-chan ui
 		return
 	}
 	for _, xattrInfo := range xattrInfos {
-		if xattrInfo.XAttrs[SummaryKey] != "" {
-			summaryList := strings.Split(xattrInfo.XAttrs[SummaryKey], ",")
+		if string(xattrInfo.XAttrs[SummaryKey]) != "" {
+			summaryList := strings.Split(string(xattrInfo.XAttrs[SummaryKey]), ",")
 			files, _ := strconv.ParseInt(summaryList[0], 10, 64)
 			subdirs, _ := strconv.ParseInt(summaryList[1], 10, 64)
 			fbytes, _ := strconv.ParseInt(summaryList[2], 10, 64)
@@ -2253,8 +2281,8 @@ func (mw *MetaWrapper) refreshSummary(parentIno uint64, errCh chan<- error, wg *
 		return
 	}
 	oldSummaryInfo := SummaryInfo{0, 0, 0}
-	if summaryXAttrInfo.XAttrs[SummaryKey] != "" {
-		summaryList := strings.Split(summaryXAttrInfo.XAttrs[SummaryKey], ",")
+	if string(summaryXAttrInfo.XAttrs[SummaryKey]) != "" {
+		summaryList := strings.Split(string(summaryXAttrInfo.XAttrs[SummaryKey]), ",")
 		files, _ := strconv.ParseInt(summaryList[0], 10, 64)
 		subdirs, _ := strconv.ParseInt(summaryList[1], 10, 64)
 		fbytes, _ := strconv.ParseInt(summaryList[2], 10, 64)

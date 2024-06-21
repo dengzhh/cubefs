@@ -313,10 +313,10 @@ func (v *Volume) SetXAttr(path string, key string, data []byte, autoCreate bool)
 			attrItem := &AttrItem{
 				XAttrInfo: proto.XAttrInfo{
 					Inode:  inode,
-					XAttrs: make(map[string]string, 0),
+					XAttrs: make(map[string][]byte, 0),
 				},
 			}
-			attrItem.XAttrs[key] = string(data)
+			attrItem.XAttrs[key] = data
 			objMetaCache.MergeAttr(v.name, attrItem)
 		}
 	}
@@ -375,7 +375,7 @@ func (v *Volume) GetXAttr(path string, key string) (info *proto.XAttrInfo, err e
 
 		info = &proto.XAttrInfo{
 			Inode:  inode,
-			XAttrs: make(map[string]string, 0),
+			XAttrs: make(map[string][]byte, 0),
 		}
 
 		var attr *proto.XAttrInfo
@@ -743,34 +743,34 @@ func (v *Volume) PutObject(path string, reader io.Reader, opt *PutFileOption) (f
 	attr := &AttrItem{
 		XAttrInfo: proto.XAttrInfo{
 			Inode:  invisibleTempDataInode.Inode,
-			XAttrs: make(map[string]string),
+			XAttrs: make(map[string][]byte),
 		},
 	}
 
-	attr.XAttrs[XAttrKeyOSSETag] = etagValue.Encode()
+	attr.XAttrs[XAttrKeyOSSETag] = []byte(etagValue.Encode())
 	if opt != nil && opt.MIMEType != "" {
-		attr.XAttrs[XAttrKeyOSSMIME] = opt.MIMEType
+		attr.XAttrs[XAttrKeyOSSMIME] = []byte(opt.MIMEType)
 	}
 	if opt != nil && len(opt.Disposition) > 0 {
-		attr.XAttrs[XAttrKeyOSSDISPOSITION] = opt.Disposition
+		attr.XAttrs[XAttrKeyOSSDISPOSITION] = []byte(opt.Disposition)
 	}
 	if opt != nil && opt.Tagging != nil {
-		attr.XAttrs[XAttrKeyOSSTagging] = opt.Tagging.Encode()
+		attr.XAttrs[XAttrKeyOSSTagging] = []byte(opt.Tagging.Encode())
 	}
 	if opt != nil && len(opt.CacheControl) > 0 {
-		attr.XAttrs[XAttrKeyOSSCacheControl] = opt.CacheControl
+		attr.XAttrs[XAttrKeyOSSCacheControl] = []byte(opt.CacheControl)
 	}
 	if opt != nil && len(opt.Expires) > 0 {
-		attr.XAttrs[XAttrKeyOSSExpires] = opt.Expires
+		attr.XAttrs[XAttrKeyOSSExpires] = []byte(opt.Expires)
 	}
 	if opt != nil && opt.ACL != nil {
-		attr.XAttrs[XAttrKeyOSSACL] = opt.ACL.Encode()
+		attr.XAttrs[XAttrKeyOSSACL] = []byte(opt.ACL.Encode())
 	}
 
 	// If user-defined metadata have been specified, use extend attributes for storage.
 	if opt != nil && len(opt.Metadata) > 0 {
 		for name, value := range opt.Metadata {
-			attr.XAttrs[name] = value
+			attr.XAttrs[name] = []byte(value)
 			log.LogDebugf("PutObject: store user-defined metadata: "+
 				"volume(%v) path(%v) inode(%v) key(%v) value(%v)",
 				v.name, path, invisibleTempDataInode.Inode, name, value)
@@ -1239,13 +1239,13 @@ func (v *Volume) CompleteMultipart(path, multipartID string, multipartInfo *prot
 		TS:      finalInode.ModifyTime,
 	}
 
-	attrs := make(map[string]string)
-	attrs[XAttrKeyOSSETag] = etagValue.Encode()
+	attrs := make(map[string][]byte)
+	attrs[XAttrKeyOSSETag] = []byte(etagValue.Encode())
 	// set user modified system metadata, self defined metadata and tag
 	extend := multipartInfo.Extend
 	if len(extend) > 0 {
 		for key, value := range extend {
-			attrs[key] = value
+			attrs[key] = []byte(value)
 		}
 	}
 	if err = v.mw.BatchSetXAttr_ll(finalInode.Inode, attrs); err != nil {
@@ -1698,7 +1698,7 @@ func (v *Volume) ObjectMeta(path string) (info *FSFileInfo, xattr *proto.XAttrIn
 	metadata := make(map[string]string, 0)
 	for key, val := range xattr.XAttrs {
 		if !strings.HasPrefix(key, "oss:") {
-			metadata[key] = val
+			metadata[key] = string(val)
 		}
 	}
 
@@ -2555,30 +2555,30 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 			attr := &AttrItem{
 				XAttrInfo: proto.XAttrInfo{
 					Inode:  sInode,
-					XAttrs: make(map[string]string),
+					XAttrs: make(map[string][]byte),
 				},
 			}
 
 			if opt != nil && opt.MIMEType != "" {
-				attr.XAttrs[XAttrKeyOSSMIME] = opt.MIMEType
+				attr.XAttrs[XAttrKeyOSSMIME] = []byte(opt.MIMEType)
 			}
 			if opt != nil && opt.Disposition != "" {
-				attr.XAttrs[XAttrKeyOSSDISPOSITION] = opt.Disposition
+				attr.XAttrs[XAttrKeyOSSDISPOSITION] = []byte(opt.Disposition)
 			}
 			if opt != nil && opt.CacheControl != "" {
-				attr.XAttrs[XAttrKeyOSSCacheControl] = opt.CacheControl
+				attr.XAttrs[XAttrKeyOSSCacheControl] = []byte(opt.CacheControl)
 			}
 			if opt != nil && opt.Expires != "" {
-				attr.XAttrs[XAttrKeyOSSExpires] = opt.Expires
+				attr.XAttrs[XAttrKeyOSSExpires] = []byte(opt.Expires)
 			}
 			if opt != nil && opt.ACL != nil {
-				attr.XAttrs[XAttrKeyOSSACL] = opt.ACL.Encode()
+				attr.XAttrs[XAttrKeyOSSACL] = []byte(opt.ACL.Encode())
 			}
 
 			// If user-defined metadata have been specified, use extend attributes for storage.
 			if opt != nil && len(opt.Metadata) > 0 {
 				for name, value := range opt.Metadata {
-					attr.XAttrs[name] = value
+					attr.XAttrs[name] = []byte(value)
 					log.LogDebugf("PutObject: store user-defined metadata: "+
 						"volume(%v) path(%v) inode(%v) key(%v) value(%v)",
 						sv.name, sourcePath, sInode, name, value)
@@ -2786,10 +2786,10 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 	targetAttr := &AttrItem{
 		XAttrInfo: proto.XAttrInfo{
 			Inode:  tInodeInfo.Inode,
-			XAttrs: make(map[string]string),
+			XAttrs: make(map[string][]byte),
 		},
 	}
-	targetAttr.XAttrs[XAttrKeyOSSETag] = etagValue.Encode()
+	targetAttr.XAttrs[XAttrKeyOSSETag] = []byte(etagValue.Encode())
 
 	// copy source file metadata to write target file metadata
 	if metaDirective != MetadataDirectiveReplace {
@@ -2806,7 +2806,7 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 			targetAttr.XAttrs[key] = val
 		}
 		if opt != nil && opt.ACL != nil {
-			targetAttr.XAttrs[XAttrKeyOSSACL] = opt.ACL.Encode()
+			targetAttr.XAttrs[XAttrKeyOSSACL] = []byte(opt.ACL.Encode())
 		}
 		if err = v.mw.BatchSetXAttr_ll(tInodeInfo.Inode, targetAttr.XAttrs); err != nil {
 			log.LogErrorf("CopyFile: set target xattr fail: volume(%v) target path(%v) inode(%v) xattr (%v)err(%v)",
@@ -2820,25 +2820,25 @@ func (v *Volume) CopyFile(sv *Volume, sourcePath, targetPath, metaDirective stri
 	} else {
 		log.LogDebugf("debug_CopyFile replace dst meta")
 		if opt != nil && opt.MIMEType != "" {
-			targetAttr.XAttrs[XAttrKeyOSSMIME] = opt.MIMEType
+			targetAttr.XAttrs[XAttrKeyOSSMIME] = []byte(opt.MIMEType)
 		}
 		if opt != nil && opt.Disposition != "" {
-			targetAttr.XAttrs[XAttrKeyOSSDISPOSITION] = opt.Disposition
+			targetAttr.XAttrs[XAttrKeyOSSDISPOSITION] = []byte(opt.Disposition)
 		}
 		if opt != nil && opt.CacheControl != "" {
-			targetAttr.XAttrs[XAttrKeyOSSCacheControl] = opt.CacheControl
+			targetAttr.XAttrs[XAttrKeyOSSCacheControl] = []byte(opt.CacheControl)
 		}
 		if opt != nil && opt.Expires != "" {
-			targetAttr.XAttrs[XAttrKeyOSSExpires] = opt.Expires
+			targetAttr.XAttrs[XAttrKeyOSSExpires] = []byte(opt.Expires)
 		}
 		if opt != nil && opt.ACL != nil {
-			targetAttr.XAttrs[XAttrKeyOSSACL] = opt.ACL.Encode()
+			targetAttr.XAttrs[XAttrKeyOSSACL] = []byte(opt.ACL.Encode())
 		}
 
 		// If user-defined metadata have been specified, use extend attributes for storage.
 		if opt != nil && len(opt.Metadata) > 0 {
 			for name, value := range opt.Metadata {
-				targetAttr.XAttrs[name] = value
+				targetAttr.XAttrs[name] = []byte(value)
 				log.LogDebugf("CopyFile: store user-defined metadata: "+
 					"volume(%v) path(%v) inode(%v) key(%v) value(%v)",
 					v.name, targetPath, tInodeInfo.Inode, name, value)

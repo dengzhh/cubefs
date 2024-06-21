@@ -19,6 +19,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/cubefs/cubefs/sdk/meta"
 	"io"
 	"io/ioutil"
 	"math"
@@ -56,7 +57,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = ino.Unmarshal(msg.V); err != nil {
 			return
 		}
-		if mp.config.Cursor < ino.Inode {
+		if mp.config.Cursor < ino.Inode && ino.Inode < meta.TrashInode {
 			mp.config.Cursor = ino.Inode
 		}
 		resp = mp.fsmCreateInode(ino)
@@ -66,7 +67,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			return
 		}
 		ino := qinode.inode
-		if mp.config.Cursor < ino.Inode {
+		if mp.config.Cursor < ino.Inode && ino.Inode < meta.TrashInode {
 			mp.config.Cursor = ino.Inode
 		}
 		if len(qinode.quotaIds) > 0 {
@@ -121,6 +122,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		inoOnce := InodeOnceUnmarshal(msg.V)
 		ino := NewInode(inoOnce.Inode, 0)
 		ino.ParentIno = inoOnce.ParentIno
+		ino.SrcParentIno = inoOnce.SrcParentIno
 		resp = mp.fsmCreateLinkInode(ino, inoOnce.UniqID)
 	case opFSMEvictInode:
 		ino := NewInode(0, 0)
@@ -322,7 +324,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 		if err = txIno.Unmarshal(msg.V); err != nil {
 			return
 		}
-		if mp.config.Cursor < txIno.Inode.Inode {
+		if mp.config.Cursor < txIno.Inode.Inode && txIno.Inode.Inode < meta.TrashInode {
 			mp.config.Cursor = txIno.Inode.Inode
 		}
 		resp = mp.fsmTxCreateInode(txIno, []uint32{})
@@ -332,7 +334,7 @@ func (mp *metaPartition) Apply(command []byte, index uint64) (resp interface{}, 
 			return
 		}
 		txIno := qinode.txinode
-		if mp.config.Cursor < txIno.Inode.Inode {
+		if mp.config.Cursor < txIno.Inode.Inode && txIno.Inode.Inode < meta.TrashInode {
 			mp.config.Cursor = txIno.Inode.Inode
 		}
 		if len(qinode.quotaIds) > 0 {

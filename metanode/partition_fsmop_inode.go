@@ -142,6 +142,10 @@ func (mp *metaPartition) fsmCreateLinkInode(ino *Inode, uniqID uint64) (resp *In
 	}
 	i.IncNLink()
 	mp.addExtendParentIno(ino.Inode, ino.ParentIno)
+	i.UpdateParentIno(ino.ParentIno)
+	if ino.SrcParentIno > 0 {
+		mp.delExtendParentIno(ino.Inode, ino.SrcParentIno)
+	}
 	return
 }
 
@@ -275,7 +279,10 @@ func (mp *metaPartition) fsmUnlinkInode(ino *Inode, uniqID uint64) (resp *InodeR
 
 	inode.DecNLink()
 	if !proto.IsDir(inode.Type) {
-		mp.delExtendParentIno(ino.Inode, ino.ParentIno) // ino.ParentIno differ from inode.ParentIno which would not be the requested.
+		parentLeft, err := mp.delExtendParentIno(ino.Inode, ino.ParentIno) // ino.ParentIno differ from inode.ParentIno which would not be the requested.
+		if err == nil && parentLeft > 0 {
+			inode.UpdateParentIno(parentLeft)
+		}
 	}
 
 	//Fix#760: when nlink == 0, push into freeList and delay delete inode after 7 days

@@ -37,6 +37,7 @@ func (u *Kv) addKey(key, value *string) (result *string, err error) {
 	defer u.kvStoreMutex.Unlock()
 	//check duplicate
 	if _, exist = u.kvStore.Load(*key); exist {
+		log.LogErrorf("action[addKey], key: %v, value: %v", *key, *value)
 		err = proto.ErrDuplicateKey
 		return
 	}
@@ -46,7 +47,7 @@ func (u *Kv) addKey(key, value *string) (result *string, err error) {
 	}
 
 	u.kvStore.Store(*key, *value)
-
+	log.LogInfof("action[addKey], key: %v, value: %v", *key, *value)
 	return
 }
 
@@ -62,7 +63,7 @@ func (u *Kv) delKey(key *string) (err error) {
 		return
 	}
 	u.kvStore.Delete(*key)
-	log.LogInfof("action[delKey], key: %v", key)
+	log.LogInfof("action[delKey], key: %v", *key)
 	return
 }
 
@@ -82,35 +83,39 @@ func (u *Kv) updateKey(key, value *string) (result *string, err error) {
 		if !exist {
 			oldValue = "0"
 		}
-		oldVal, _ := strconv.ParseInt(oldValue.(string), 10, 64)
+		oldVal, err2 := strconv.ParseInt(oldValue.(string), 10, 64)
+		if err2 != nil {
+			log.LogWarnf("action[updateKey], key: %v, value: %v, err: %v", *key, valStr, err2)
+		}
 		diff, _ := strconv.ParseInt(valStr[1:], 10, 64)
 		newVal := strconv.FormatInt(oldVal+diff, 10)
 		if err = u.syncUpdateKv(key, &newVal); err != nil {
+			log.LogErrorf("action[updateKey], key: %v, value: %v, err: %v", *key, valStr, err)
 			return
 		}
 		u.kvStore.Store(*key, newVal)
-		log.LogInfof("action[updateKey], key: %v, value: %v", key, valStr)
+		log.LogInfof("action[updateKey], key: %v, value: %v", *key, valStr)
 		return &newVal, nil
 	} else if strings.HasPrefix(valStr, "%1") {
 		if exist {
-			newVal := *value + "#" + strings.SplitN(oldValue.(string), "#", 2)[1]
+			newVal := (*value)[2:] + "#" + strings.SplitN(oldValue.(string), "#", 2)[1]
 			if err = u.syncUpdateKv(key, &newVal); err != nil {
 				return
 			}
-			u.kvStore.Store(*key, &newVal)
-			log.LogInfof("action[updateKey], key: %v, value: %v", key, valStr)
+			u.kvStore.Store(*key, newVal)
+			log.LogInfof("action[updateKey], key: %v, value: %v", *key, valStr)
 			return &newVal, nil
 		} else {
 			return nil, proto.ErrKeyNotExists
 		}
 	} else if strings.HasPrefix(valStr, "%2") {
 		if exist {
-			newVal := strings.SplitN(oldValue.(string), "#", 2)[0] + "#" + *value
+			newVal := strings.SplitN(oldValue.(string), "#", 2)[0] + "#" + (*value)[2:]
 			if err = u.syncUpdateKv(key, &newVal); err != nil {
 				return
 			}
-			u.kvStore.Store(*key, &newVal)
-			log.LogInfof("action[updateKey], key: %v, value: %v", key, valStr)
+			u.kvStore.Store(*key, newVal)
+			log.LogInfof("action[updateKey], key: %v, value: %v", *key, valStr)
 			return &newVal, nil
 		} else {
 			return nil, proto.ErrKeyNotExists
@@ -124,17 +129,18 @@ func (u *Kv) updateKey(key, value *string) (result *string, err error) {
 	}
 	u.kvStore.Store(*key, *value)
 
-	log.LogInfof("action[updateKey], key: %v", key)
+	log.LogInfof("action[updateKey], key: %v, value: %v", *key, *value)
 	return
 }
 
 func (u *Kv) getKey(key *string) (value *string, err error) {
 	data, exist := u.kvStore.Load(*key)
 	if !exist {
+		log.LogInfof("action[getKey], key[%v] not exist", *key)
 		err = proto.ErrKeyNotExists
 		return
 	}
-	log.LogInfof("action[getKey], key[%v]", *key)
+	log.LogInfof("action[getKey], key[%v], value: %v", *key, data.(string))
 	value2 := data.(string)
 	return &value2, nil
 }
